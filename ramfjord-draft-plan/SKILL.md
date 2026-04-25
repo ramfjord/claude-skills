@@ -5,7 +5,11 @@ description: Draft or edit a project plan as a markdown file under ./plans/. Rea
 
 # ramfjord-draft-plan
 
-Plans live in `./plans/<slug>.md` at the repo root. They are committed, human-edited markdown — the durable artifact for "here's how we intend to approach X." Distinct from `CURRENT_PLAN.md` (per-worktree, gitignored, working notes) seeded by `ramfjord-start-task`.
+Plans live in `./plans/<slug>.md` at the repo root. They are committed, human-edited markdown — the durable artifact for "here's how we intend to approach X."
+
+A plan covers **exactly one branch's worth of work** — what will land as a single feature branch, structured as an ordered series of commits. Work that is genuinely "later, separate scope" goes in a `Future plans` section (one-liners), not as additional sections of this plan; draft those as their own plans when ready.
+
+`ramfjord-start-task` later copies the chosen plan into the worktree as `CURRENT_PLAN.md`, where `ramfjord-do-plan` walks the `Commits` list one item at a time.
 
 ## What this skill does
 
@@ -44,14 +48,14 @@ Cite sibling plans by filename when they're relevant. A reader of one plan shoul
 
 ## Drafting
 
-Freeform markdown. Don't impose a rigid template — match the style of existing plans in the repo if there is one. A reasonable default skeleton when starting from scratch:
+Match the style of existing plans in the repo if there is one. Default skeleton when starting from scratch:
 
 ```markdown
 # <topic>
 
 ## Goal
 
-<one or two lines — what does "done" look like?>
+<one or two lines — what does "done" look like for this branch?>
 
 ## Context
 
@@ -61,12 +65,43 @@ Freeform markdown. Don't impose a rigid template — match the style of existing
 
 <bulleted list of sibling plans this depends on, overlaps with, or conflicts with — empty is fine, but the section should exist so future drafters know it was considered>
 
-## Approach
+## Design notes
 
-<the actual plan — steps, alternatives considered, open questions>
+<optional — shared rationale referenced by multiple commits below, so each commit's description can stay short. Skip if there's no cross-cutting design context>
+
+## Commits
+
+Ordered list of atomic, reviewable commits. Each must leave the tree green (tests pass, build works) on its own. Format:
+
+1. **<title>** — <one-line what + why>.
+   *Verify:* <how we know it works — tests added, manual check, command output>.
+2. ...
+
+## Future plans
+
+<optional — one-line entries for follow-up work that is out of scope for this branch but worth remembering. Each should become its own plan when ready. Omit the section if there's nothing>
+
+## Non-goals
+
+<optional — things this plan deliberately does not do, to head off scope creep>
 ```
 
-The **Related plans** section is the load-bearing one for this skill. Even "none — checked `./plans/` on <date>" is a useful entry, because the next drafter knows the cross-check happened.
+Two sections are load-bearing for this skill:
+
+- **Related plans** — even "none — checked `./plans/` on <date>" is a useful entry, because the next drafter knows the cross-check happened.
+- **Commits** — `ramfjord-do-plan` parses this section. Without it the plan can be read by humans but not walked by the do-plan skill.
+
+### Sizing commits
+
+The drafter is responsible for sizing. Heuristics:
+
+- Each commit should be a single coherent diff a reviewer can read in one sitting (rough rule: under ~250 changed lines).
+- Each commit must leave tests green. If a refactor *necessarily* breaks tests mid-way, either it's actually two commits (introduce alongside, then switch over) or the test changes belong in the same commit as the code changes.
+- Pure refactors first (no behavior change), then additions, then wiring. This makes each commit trivially safe to review.
+- If a commit ends up with several unrelated *Verify:* lines, it's probably two commits.
+- Don't fragment for its own sake. Two-line commits are noise.
+
+Five to seven commits is a typical size for a focused branch. More than ten and the plan is probably trying to do too much in one branch — split it.
 
 ## Editing an existing plan
 

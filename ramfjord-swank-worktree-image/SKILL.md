@@ -45,6 +45,10 @@ Four states, four responses:
 
 ## Full bootstrap (state 4)
 
+Do this automatically — don't ask the user first. By invoking this skill
+they've already opted into the per-worktree image setup; the only cost
+is one Claude restart at the end (which they'd have to do anyway).
+
 ```bash
 WORKTREE_NAME=$(basename "$PWD")
 WORKTREE_PATH="$PWD"
