@@ -1,15 +1,15 @@
 ---
-name: coding-lisp
+name: ramfjord-coding-lisp
 description: Use whenever editing, reading, or debugging Lisp-family code (Common Lisp, Scheme, Clojure, Emacs Lisp — any .lisp/.cl/.scm/.ss/.rkt/.clj/.cljs/.el file). Encodes REPL-driven development habits that distinguish good Lisp work from edit-run-print loops, and counters reflexes carried over from non-image-based languages.
 ---
 
-# coding-lisp
+# ramfjord-coding-lisp
 
 Lisp is a *REPL-driven* language. The default mode of work is not "edit file → run → read output" but "load image once → eval forms incrementally → inspect live values → redefine in place."
 
 ## Eval mechanism — the contract
 
-This skill assumes a way to evaluate forms in a live Lisp image is available. The typical mechanism is an MCP server tool such as `eval_swank` from `lisp-mcp`, which talks to a long-running SBCL with a swank server. Anything that satisfies "I can send a form and get back the value, side effects visible to subsequent forms" works — a per-worktree image (see a project's `swank-worktree-image` skill if one exists), a global dev image, or your own setup.
+This skill assumes a way to evaluate forms in a live Lisp image is available. The typical mechanism is an MCP server tool such as `eval_swank` from `lisp-mcp`, which talks to a long-running SBCL with a swank server. Anything that satisfies "I can send a form and get back the value, side effects visible to subsequent forms" works — a per-worktree image (see `ramfjord-swank-worktree-image` for one such setup), a global dev image, or your own setup.
 
 If no eval mechanism is available, surface that to the user before continuing — the rest of this skill assumes one exists.
 

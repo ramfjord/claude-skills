@@ -1,13 +1,13 @@
 ---
-name: swank-worktree-image
+name: ramfjord-swank-worktree-image
 description: Set up and use a per-worktree Common Lisp image (SBCL + swank) wired to lisp-mcp's eval_swank, so each git worktree has its own isolated live image. Use when starting work in a new worktree, recovering an existing one, or troubleshooting why eval_swank isn't reaching the expected image.
 ---
 
-# swank-worktree-image
+# ramfjord-swank-worktree-image
 
 Each git worktree gets its own SBCL image with a swank server, accessed via `lisp-mcp`'s `eval_swank` tool. Worktrees are isolated — different ports, different sessions, different state — so parallel features can't surprise each other. The user typically attaches their editor (nvlime/Vlime) to the same swank port for review; Claude attaches via lisp-mcp.
 
-This skill is the *setup* side of the workflow. For *using* the eval mechanism once it exists, see `coding-lisp`.
+This skill is the *setup* side of the workflow. For *using* the eval mechanism once it exists, see `ramfjord-coding-lisp`.
 
 ## Conventions
 
