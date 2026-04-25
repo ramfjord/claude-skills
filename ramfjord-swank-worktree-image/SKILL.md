@@ -49,69 +49,40 @@ Do this automatically — don't ask the user first. By invoking this skill
 they've already opted into the per-worktree image setup; the only cost
 is one Claude restart at the end (which they'd have to do anyway).
 
+Run the bootstrap script from this skill directory, passing the worktree path:
+
 ```bash
-WORKTREE_NAME=$(basename "$PWD")
-WORKTREE_PATH="$PWD"
-
-# Pick the first free port starting at 4005
-PORT=4005
-while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":$PORT$"; do
-  PORT=$((PORT + 1))
-done
-echo "$PORT" > .swank-port
-
-# Start tmux session with SBCL
-tmux new-session -d -s "$WORKTREE_NAME" -x 220 -y 50 \
-  "cd $WORKTREE_PATH && sbcl --noinform"
-sleep 1
-
-# Bootstrap the image: load the project, start swank.
-# Replace `:elp` with the project's ASDF system name — usually the
-# basename of the `*.asd` file in cwd. If there's no .asd, swap the
-# `asdf:load-system` call for `(load "main.lisp")` or whatever the
-# project's entry point is.
-#
-# IMPORTANT: send these as separate forms, not one big `progn`. The
-# reader processes the whole form before any evaluation happens, so a
-# single `progn` containing `swank:create-server` fails — the SWANK
-# package doesn't exist yet at read time. Splitting the sends means
-# each form is read after the previous one has loaded what it needs.
-tmux send-keys -t "$WORKTREE_NAME" \
-  "(push (truename \"$WORKTREE_PATH/\") asdf:*central-registry*)" Enter
-sleep 1
-tmux send-keys -t "$WORKTREE_NAME" "(ql:quickload :swank)" Enter
-sleep 5
-tmux send-keys -t "$WORKTREE_NAME" "(asdf:load-system :elp)" Enter
-sleep 5
-tmux send-keys -t "$WORKTREE_NAME" \
-  "(swank:create-server :port $PORT :dont-close t)" Enter
-sleep 2
-
-# Verify swank is listening
-ss -tln | grep -q ":$PORT" || echo "WARNING: swank did not start on $PORT"
-
-# Write .mcp.json
-cat > .mcp.json <<EOF
-{
-  "mcpServers": {
-    "lisp": {
-      "type": "stdio",
-      "command": "/home/tramfjord/projects/lisp-mcp/lisp-mcp.sh",
-      "args": [],
-      "env": {
-        "SWANK_PORT": "$PORT"
-      }
-    }
-  }
-}
-EOF
+~/.claude/skills/ramfjord-swank-worktree-image/bootstrap-swank.sh "$PWD"
 ```
+
+The script:
+- picks a free port starting at 4005
+- derives the ASDF system name from the worktree's `*.asd` file
+- creates a tmux session named after the worktree
+- runs `run-swank.expect` inside it (drives SBCL through the load
+  sequence, blocking on the prompt rather than sleeping)
+- writes `.swank-port` and `.mcp.json` once swank is actually LISTEN
+- refuses if a tmux session of the same name already exists
+
+The bootstrap forms are: push the worktree onto `asdf:*central-registry*`,
+`(ql:quickload :swank)`, `(asdf:load-system :SYSTEM)`, `(swank:create-server
+:port PORT :dont-close t)`. They are sent as **separate forms, not one
+`progn`** — the reader processes a whole form before any evaluation, so
+a `progn` containing `swank:create-server` fails because the SWANK
+package doesn't exist at read time.
 
 After bootstrap, **the MCP tools are not yet available in the current Claude session** — MCP servers bind at Claude session start. Tell the user:
 
 > Setup complete on port `$PORT`. Restart Claude in this directory (or run `/mcp`) to pick up `eval_swank`.
 
 Then `ramfjord-coding-lisp` takes over for the actual work.
+
+### Testing the bootstrap
+
+`./test.sh` in this skill directory runs `bootstrap-swank.sh` against
+`fixtures/elp/` and asserts the tmux session, files, listening port,
+and TCP connectivity. Run it after editing `bootstrap-swank.sh` or
+`run-swank.expect`.
 
 ## Re-bootstrap swank in an existing session (state 3)
 

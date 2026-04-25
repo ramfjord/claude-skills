@@ -1,0 +1,67 @@
+#!/usr/bin/env -S expect -f
+# run-swank.expect — bootstrap one SBCL image with swank listening.
+#
+#   args: WORKTREE_PATH SYSTEM_NAME PORT
+#
+# Spawns sbcl directly (no tmux), drives it through:
+#   1. add WORKTREE_PATH to asdf:*central-registry*
+#   2. (ql:quickload :swank)
+#   3. (asdf:load-system :SYSTEM_NAME)
+#   4. (swank:create-server :port PORT :dont-close t)
+# then `interact`s — handing the pty to whoever invoked us (a tmux
+# pane, a real terminal) so SBCL keeps running.
+#
+# Why expect: each load step takes an unknown amount of time. expect
+# blocks on the pty in the kernel until SBCL's "* " prompt comes back,
+# so we send the next form the moment the previous one completes —
+# event-driven, no sleeps, no polling.
+
+if {[llength $argv] != 3} {
+    puts stderr "usage: run-swank.expect WORKTREE_PATH SYSTEM PORT"
+    exit 2
+}
+
+set path   [lindex $argv 0]
+set system [lindex $argv 1]
+set port   [lindex $argv 2]
+
+# SBCL's top-level prompt: "* " on its own line.
+set prompt "\n* "
+
+proc await_prompt {what} {
+    global prompt
+    expect {
+        -ex $prompt {}
+        timeout { puts stderr "timeout waiting for prompt after: $what"; exit 3 }
+        eof     { puts stderr "unexpected eof after: $what";              exit 4 }
+    }
+}
+
+set timeout 30
+cd $path
+spawn sbcl --noinform
+# `--noinform` means the very first byte is "* " with no leading
+# newline, so our `\n* ` pattern can't match it. Send an empty line to
+# produce a fresh prompt that does have the newline.
+send -- "\r"
+await_prompt "sbcl banner"
+
+send -- "(push (truename \"$path/\") asdf:*central-registry*)\r"
+await_prompt "push central-registry"
+
+# Cold Quicklisp + multi-file ASDF loads can take a while.
+set timeout 180
+send -- "(ql:quickload :swank)\r"
+await_prompt "ql:quickload :swank"
+
+send -- "(asdf:load-system :$system)\r"
+await_prompt "asdf:load-system :$system"
+
+set timeout 10
+send -- "(swank:create-server :port $port :dont-close t)\r"
+await_prompt "swank:create-server"
+
+# Hand the pty to the caller. Blocks until sbcl exits — that's how
+# tmux's pane keeps a live REPL after this script's "bootstrap phase"
+# is done.
+interact
