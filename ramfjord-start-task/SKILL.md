@@ -17,8 +17,9 @@ Mechanics for spinning up a new piece of work. The skill does the boring setup; 
 
 ## Inputs
 
-- **Idea / TODO text** — required. Either a short description ("add retry to the ingest worker") or a verbatim line from `TODOs.md`.
-- **Branch name** — optional. If the user gave one, use it verbatim. Otherwise derive: lowercase, kebab-case, 3–5 words capturing the essence of the idea. Strip leading verbs like "add/fix/update" only if the result is still descriptive.
+- **Idea / TODO text** — required. Either a short description ("add retry to the ingest worker"), a verbatim line from `TODOs.md`, or a path/reference to a plan under `./plans/`.
+- **Plan** — optional. A path like `./plans/add-retry.md` or just the slug `add-retry`. If given, the plan's slug becomes the default branch name and the plan file is linked to the branch (see *Linking a plan* below).
+- **Branch name** — optional. If the user gave one, use it verbatim. Otherwise: if started from a plan, use the plan slug. Otherwise derive from the idea: lowercase, kebab-case, 3–5 words capturing the essence. Strip leading verbs like "add/fix/update" only if the result is still descriptive.
 
 ## Preflight
 
@@ -65,6 +66,25 @@ git commit -m "Start: <idea>"
 
 This commit rides with the branch — merging the branch is what updates main's TODO list. No commit on main.
 
+## Linking a plan (only if started from one)
+
+If the task was started from a plan at `./plans/<slug>.md`, record the branch in the plan file so `ramfjord-plan-status` can map the two. Do this on **main**, not on the branch — `plan-status` runs from main and needs to see the linkage before the branch is ever merged.
+
+In the main checkout (not the worktree):
+
+1. Read the plan file. If it already has a `Branch:` line or frontmatter `branch:` field, leave it alone (the user set it deliberately).
+2. Otherwise, add a `Branch: <branch>` line near the top of the plan (after the H1 title, before the first section).
+3. Commit just that one file:
+
+   ```bash
+   git add plans/<slug>.md
+   git commit -m "Link plan: <slug> -> <branch>"
+   ```
+
+This is the **only** edit this skill makes to `main`, and it's metadata-only — no work content. Skip entirely when the task isn't tied to a plan.
+
+Also reference the plan from `CURRENT_PLAN.md` (next step) so the worktree points back at its source plan.
+
 ## Seed CURRENT_PLAN.md
 
 Write `CURRENT_PLAN.md` at the worktree root. Freeform — a starting scaffold is fine but don't be prescriptive. Something like:
@@ -73,6 +93,7 @@ Write `CURRENT_PLAN.md` at the worktree root. Freeform — a starting scaffold i
 # <idea>
 
 Branch: <branch>
+Plan: <./plans/slug.md, if started from one — else omit>
 
 ## Goal
 
@@ -97,4 +118,4 @@ If the project is a Lisp project (has `.asd` files, `package.lisp`, etc.), menti
 
 - Flesh out the plan. That's a conversation, not a script.
 - Mark tasks done or merge branches. Separate `finish-task` skill (TBD).
-- Touch `main`. No commits, no edits.
+- Touch `main` with work content. The only main edit it makes is the one-line `Branch:` link in the plan file (see *Linking a plan*), and only when started from a plan.
