@@ -92,6 +92,14 @@ In Clojure: `clojure.tools.trace/trace-vars`. In Scheme: implementation-specific
 
 This is *why* REPL-driven dev is fast: you pay setup cost once and iterate on top of it. If you find yourself restarting the image more than once a session, ask why — usually it's because something got into a wedged state, and the right fix is to make that state inspectable/resettable from a function call rather than to restart.
 
+### Edit-then-load vs. define-at-REPL
+
+Two ways a redefinition can land in the image: edit the file and `(load ...)`, or paste a `defun` straight into the REPL. They are *not* interchangeable.
+
+- **Edit-then-load is the default for known changes.** You're going to write the definition to disk anyway. Writing it once (in the file) and reloading is one step; defining at the REPL first and then duplicating it into the file is two steps that can drift apart.
+- **Define-at-REPL is for shape-uncertain exploration.** When you don't know the right signature yet and want to try three variants in 30 seconds, the REPL is the right tool — short feedback loop, no file churn. Once a shape is settled, write it to the file and stop typing it at the prompt.
+- **Anti-pattern:** type a definition at the REPL "to test it", confirm it works, then re-type the same definition into the file. That's pure double-work — the next `(load ...)` would have given you the same confirmation and skipped the duplication.
+
 Two concrete moves that make this work:
 - **Bind expensive setup to a global**: `(defparameter *sample* (parse-big-thing "..."))`. Now you can poke at `*sample*` for an hour without re-parsing.
 - **Use `defparameter`, not `defvar`, while developing**: `defvar` won't overwrite an existing binding, so re-evaling it does nothing — surprising and frustrating during iteration. Switch to `defvar` only when the value should genuinely persist across reloads.
@@ -99,9 +107,11 @@ Two concrete moves that make this work:
 ## Cross-cutting: when to fall back to file-based workflow
 
 REPL-driven dev is the default. Fall back to cold runs (`make test`, `sbcl --script`) only for:
-- Final pre-commit verification (the warm image may have stale definitions you forgot about).
+- **Pre-merge verification** — one cold run before pushing/opening a PR, as a gate against image-drift bugs that warm runs can mask.
 - Reproducing a CI failure.
 - Anything where image cleanliness is part of what you're testing (e.g. "does this load from scratch").
+
+You do **not** need a cold run per commit. During iteration: edit, `(load ...)`, run the suite warm, repeat. If a freshly-loaded warm image is green, the on-disk code is what was tested — the cold run isn't telling you anything new at that scale. Saving cold runs for the merge gate keeps the iteration loop tight; if pre-merge cold ever fails, bisecting a handful of small commits is cheap.
 
 If you find yourself reaching for a cold run during normal iteration, that's a smell — the live-image workflow should be faster *and* give you more information.
 
@@ -116,6 +126,15 @@ Reviewing Lisp without running it leaves the best tool on the table. Even in "re
 - For a refactor PR, eval both the old and new versions on the same inputs and diff the results.
 
 The only review work that doesn't benefit is review *of code you can't load* (depends on something you don't have, or a different runtime). Otherwise: load the branch, warm an image, poke at it.
+
+## MCP eval_swank transport gotchas
+
+When sending forms via `eval_swank` (or any single-form MCP transport), two things bite repeatedly:
+
+- **Em-dashes and other multi-byte characters in source fail with `Connection error: junk in string`.** Use plain ASCII (`--` for an em-dash) inside expressions sent through the tool. Docstrings already in the file are fine; the issue is forms typed at the prompt.
+- **`(in-package :foo)` inside a `progn` doesn't affect the rest of the same form.** The reader processes the whole form before any evaluation, so subsequent unqualified symbols get interned in the *current* package, not `:foo`. Either send `(in-package …)` as its own call, or use fully-qualified symbols (`elp::frob`) in the body.
+
+Same root cause as the swank bootstrap reader-vs-eval gotcha — read happens before eval, always.
 
 ## When this skill doesn't apply
 

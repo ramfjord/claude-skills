@@ -65,10 +65,27 @@ tmux new-session -d -s "$WORKTREE_NAME" -x 220 -y 50 \
   "cd $WORKTREE_PATH && sbcl --noinform"
 sleep 1
 
-# Bootstrap the image: load the project, start swank
+# Bootstrap the image: load the project, start swank.
+# Replace `:elp` with the project's ASDF system name — usually the
+# basename of the `*.asd` file in cwd. If there's no .asd, swap the
+# `asdf:load-system` call for `(load "main.lisp")` or whatever the
+# project's entry point is.
+#
+# IMPORTANT: send these as separate forms, not one big `progn`. The
+# reader processes the whole form before any evaluation happens, so a
+# single `progn` containing `swank:create-server` fails — the SWANK
+# package doesn't exist yet at read time. Splitting the sends means
+# each form is read after the previous one has loaded what it needs.
 tmux send-keys -t "$WORKTREE_NAME" \
-  "(progn (push (truename \"$WORKTREE_PATH/\") asdf:*central-registry*) (ql:quickload :swank) (asdf:load-system :elp) (swank:create-server :port $PORT :dont-close t))" Enter
-sleep 3
+  "(push (truename \"$WORKTREE_PATH/\") asdf:*central-registry*)" Enter
+sleep 1
+tmux send-keys -t "$WORKTREE_NAME" "(ql:quickload :swank)" Enter
+sleep 5
+tmux send-keys -t "$WORKTREE_NAME" "(asdf:load-system :elp)" Enter
+sleep 5
+tmux send-keys -t "$WORKTREE_NAME" \
+  "(swank:create-server :port $PORT :dont-close t)" Enter
+sleep 2
 
 # Verify swank is listening
 ss -tln | grep -q ":$PORT" || echo "WARNING: swank did not start on $PORT"
@@ -94,17 +111,7 @@ After bootstrap, **the MCP tools are not yet available in the current Claude ses
 
 > Setup complete on port `$PORT`. Restart Claude in this directory (or run `/mcp`) to pick up `eval_swank`.
 
-Then `coding-lisp` takes over for the actual work.
-
-## Adapting the bootstrap to other projects
-
-The recipe above hardcodes `(asdf:load-system :elp)`. For other projects:
-
-- Replace `:elp` with the project's ASDF system name. If you don't know it, check the `.asd` file in the worktree root.
-- If the project uses Quicklisp dependencies, `ql:quickload` works instead of `asdf:load-system`.
-- If there's no ASDF system, `(load "main.lisp")` or whatever the project's entry-point file is.
-
-The rest (port allocation, session naming, swank startup, `.mcp.json` template) is project-agnostic.
+Then `ramfjord-coding-lisp` takes over for the actual work.
 
 ## Re-bootstrap swank in an existing session (state 3)
 
