@@ -134,15 +134,21 @@ Same image as Claude's `eval_swank`. State changes from either side are visible 
 
 ## Teardown
 
-When a directory is being deleted (worktree removal, etc.):
+When a directory's image is no longer needed (worktree removal, retiring
+a project, recovering from a wedged image), run:
 
 ```bash
-SESSION_NAME=$(cat .swank-session)
-tmux kill-session -t "$SESSION_NAME" 2>/dev/null
-# .swank-port, .swank-session, and .mcp.json go away with the directory
+~/.claude/skills/ramfjord-swank-image/cleanup-swank.sh "$DIR"
 ```
 
-Always confirm with the user before killing a session — they may have unsaved REPL state (rebuilding which costs them).
+The script reads `.swank-session`, kills the named tmux session if it's
+alive, and removes `.swank-session`, `.swank-port`, and `.mcp.json`. It
+is idempotent — missing pieces are no-ops, never errors. The
+`ramfjord-merge-worktree` skill (when implemented) calls this during
+worktree teardown.
+
+Always confirm with the user before killing a session in an actively-used
+directory — they may have unsaved REPL state worth preserving.
 
 ## Anti-patterns
 
