@@ -9,11 +9,11 @@ Lisp is a *REPL-driven* language. The default mode of work is not "edit file →
 
 ## Eval mechanism — the contract
 
-This skill assumes a way to evaluate forms in a live Lisp image is available. The typical mechanism is an MCP server tool such as `eval_swank` from `lisp-mcp`, which talks to a long-running SBCL with a swank server. Anything that satisfies "I can send a form and get back the value, side effects visible to subsequent forms" works — a per-worktree image (see `ramfjord-swank-worktree-image` for one such setup), a global dev image, or your own setup.
+This skill assumes a way to evaluate forms in a live Lisp image is available. The typical mechanism is an MCP server tool such as `eval_swank` from `lisp-mcp`, which talks to a long-running SBCL with a swank server. Anything that satisfies "I can send a form and get back the value, side effects visible to subsequent forms" works — a per-directory image (see `ramfjord-swank-image` for one such setup), a global dev image, or your own setup.
 
 If no eval mechanism is available, surface that to the user before continuing — the rest of this skill assumes one exists.
 
-The four habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply.
+The five habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply.
 
 ## 1. Inspect, don't guess
 
@@ -32,25 +32,42 @@ For Scheme: `,desc foo` in many REPLs, or `(procedure-arity ...)`.
 
 This is the single biggest behavior change vs. how you'd work in Python/Go. The image *has the answer*; reading code to predict the answer is wasted effort and often wrong (especially with macros, generic functions, or runtime dispatch).
 
+### Design-time triggers — when to inspect *before* writing code
+
+The "inspect, don't guess" reflex is easy to apply when staring at a return value. It's harder to remember when *designing* — but that's where the biggest payoff is. Concrete triggers, each paired with the move that catches the failure:
+
+- **About to subclass an existing class, or implement methods on an existing generic** → `(describe (find-class 'parent))` first. See which methods have defaults, which slots exist, what the convention is. Don't write `defmethod stream-read-char` while guessing whether `stream-peek-char` has a default — confirm.
+- **About to delete a function you "know" is unused** → `(trace it)`, run the suite, confirm it isn't called. Empirical evidence beats "I read the call sites and it looks unused" every time, especially with generic functions and macroexpanded calls.
+- **About to assert in a test how two pieces of code interact** → `(trace both-of-them)`, exercise the path once, read the call/return pattern. Then write the assertion against what you observed, not what you predicted.
+- **About to hand-compute a value for a test expectation** (byte counts, string lengths, slot states) → don't. Build the object once, `(describe it)`, copy the actual value into the test. Hand-counting is slow and the arithmetic is exactly the class of thing the image already knows.
+- **About to integrate with an unfamiliar API** (reader macros, format directives, condition system, ASDF hooks) → `trace` the entry points, run a minimal example, watch what gets called. Read-the-spec is fine for orientation; trace-the-call confirms you understood it.
+
+Symptom that you skipped these: writing code, watching the test fail, then *only now* opening a REPL to figure out what the API actually does. If you're going to inspect to debug, inspect to design — it's the same effort earlier in the loop.
+
 ## 2. Errors carry information — read them, don't escape them
 
 **Reflex to override:** treat an error as a wall and immediately go back to reading source.
 
-**Do instead:** read the condition. The condition object carries the operator, the offending values, and often a hint at the right restart. Most eval-via-MCP tools auto-abort the debugger and return the condition as text — so you don't get to interactively pick restarts, but you still get the diagnostic information for free.
+**Do instead:** read the condition. The condition object carries the operator, the offending values, and often a hint at the right restart. Eval-via-MCP auto-aborts the debugger and returns the condition as text — so you don't get to interactively pick restarts, but you still get the diagnostic information for free, and that's almost always enough to fix the code and re-eval.
 
-When the human collaborator has a real debugger attached (via Sly/SLIME/Vlime/nvlime to the same swank), they *do* get the interactive debugger and can:
-- `backtrace 10` — see the call stack
-- `(sb-debug:var 'foo)` / `(sb-debug:arg 0)` — inspect locals
-- pick a restart by number, or `RETURN expr` to substitute a value
-- edit the source, re-eval the `defun`, then `RESTART-FRAME` to retry
+**Assume you are the only client.** The user typically attaches their editor (nvlime/Vlime) to swank only *after* you're done iterating, for review. During iteration, no one is sitting at an interactive debugger — swank is running unattended in a tmux session. Don't punt to the user with "pick restart 2" or "inspect the frame"; they can't, and waiting for them to attach mid-iteration just stalls the loop.
 
-So when you encounter an error eval'ing via MCP and the right move involves picking a restart or inspecting frames, surface that to the user and let them drive from their editor — they have access to context you don't.
+If you genuinely need an interactive restart or frame inspection (rare — usually you can reproduce by calling the offending function with crafted args and reading the returned condition), say so explicitly and ask the user to attach. Otherwise: read the condition, fix the code, reload, retry.
 
-## 3. `trace` over print debugging
+## 3. `trace` over print debugging — and over reading
 
-**Reflex to override:** add `(format t "~A~%" x)` calls to see what's happening, then forget to remove them, then add more.
+**Reflex to override:** two reflexes, actually.
+1. (When debugging) add `(format t "~A~%" x)` calls to see what's happening, forget to remove them, add more.
+2. (When *understanding* code, not even debugging) read source files top-to-bottom to figure out which functions call which, with what arguments, in what order.
 
-**Do instead:** `trace` the function. Every call shows args + return value. `untrace` cleans up automatically.
+**Do instead:** `trace` the functions you care about, run the path once, read the recorded call/return pattern. `untrace` cleans up automatically.
+
+`trace` is a **comprehension tool**, not just a debugging tool. Before changing how a piece of code is used, trace it and exercise the surrounding flow once — you'll see the actual call pattern instead of a predicted one. This is especially valuable for:
+
+- Generic functions (which method actually fires?)
+- Macroexpanded calls (the source doesn't show the call site)
+- Callbacks dispatched through frameworks (ASDF, FiveAM, swank)
+- "Is this function even reached?" questions before deletion or refactor
 
 ```lisp
 (trace tokenize)
@@ -79,6 +96,7 @@ In Clojure: `clojure.tools.trace/trace-vars`. In Scheme: implementation-specific
 **Reflex to override:** treat a code change as requiring a restart. Edit, kill, re-run, wait for setup, retry.
 
 **Do instead:** edit the function, re-eval its `defun` (or `(load "file.lisp")` for a whole file), call again. The image keeps:
+
 - All other definitions.
 - All bound variables (`*sample-input*`, `*parsed-config*`, etc.).
 - Open connections, loaded data, accumulated state.
@@ -101,12 +119,40 @@ Two ways a redefinition can land in the image: edit the file and `(load ...)`, o
 - **Anti-pattern:** type a definition at the REPL "to test it", confirm it works, then re-type the same definition into the file. That's pure double-work — the next `(load ...)` would have given you the same confirmation and skipped the duplication.
 
 Two concrete moves that make this work:
+
 - **Bind expensive setup to a global**: `(defparameter *sample* (parse-big-thing "..."))`. Now you can poke at `*sample*` for an hour without re-parsing.
 - **Use `defparameter`, not `defvar`, while developing**: `defvar` won't overwrite an existing binding, so re-evaling it does nothing — surprising and frustrating during iteration. Switch to `defvar` only when the value should genuinely persist across reloads.
+
+## 5. Targeted tests over manual REPL poking, once requirements are defined
+
+**Reflex to override:** once a function "looks right" at the REPL, move on. Or: re-run the whole test suite after every `(load ...)` and skim the output.
+
+**Do instead:** when the requirements are concrete enough to name (this input should produce that output, this case should signal that condition), drive iteration through a small targeted test set — not eyeballed return values, not the whole suite.
+
+The loop, per change:
+
+1. **Pick or write the tests that pin down the change.** Usually 3-5, could be just 1 for simple changes: the new behavior, the obvious adjacent cases that could regress, and one negative case. Hold this set in mind for the duration of the iteration; don't re-derive it every reload.
+2. **Run them once before changing the function.** They should fail (new behavior) or pass (regression guard). If a "should fail" test passes, it isn't testing what you think — fix the test before the code.
+3. **Optionally: stub the function to return the expected value and re-run.** If the test still fails, the harness isn't exercising the path — stop and fix that. This step is cheap and catches the most embarrassing class of green-but-wrong tests. Skip it for trivial changes; do it whenever the test's wiring is non-obvious (new fixture, new assertion shape, new code path).
+4. **Implement, `(load ...)`, re-run the targeted set.** Not the whole suite. The whole suite is fast in this repo, but running it every iteration trains you to skim — running 3-5 named tests trains you to actually read the result.
+5. **Once the targeted set is green, run the full suite once** before considering the change done. Cheap insurance against regressions in code paths you didn't think to name.
+
+```lisp
+;; Targeted run — name the tests, don't pattern-match the suite
+(fiveam:run! 'render-handles-empty-template)
+(fiveam:run! 'render-escapes-html-by-default)
+(fiveam:run! 'render-passes-through-when-escape-nil)
+
+;; Full suite, once, at the end of the change
+(asdf:test-system :elp)
+```
+
+**When this doesn't apply:** shape-uncertain exploration (§4's define-at-REPL carve-out). If you don't yet know what the function's signature or return shape should be, writing a test first locks in a guess. Poke at the REPL, settle the shape, *then* switch into the targeted-test loop. The trigger to switch is "I could state the requirement as an assertion" — once that's true, stop manual-testing and write the assertion.
 
 ## Cross-cutting: when to fall back to file-based workflow
 
 REPL-driven dev is the default. Fall back to cold runs (`make test`, `sbcl --script`) only for:
+
 - **Pre-merge verification** — one cold run before pushing/opening a PR, as a gate against image-drift bugs that warm runs can mask.
 - Reproducing a CI failure.
 - Anything where image cleanliness is part of what you're testing (e.g. "does this load from scratch").
@@ -131,7 +177,7 @@ The only review work that doesn't benefit is review *of code you can't load* (de
 
 When sending forms via `eval_swank` (or any single-form MCP transport), two things bite repeatedly:
 
-- **Em-dashes and other multi-byte characters in source fail with `Connection error: junk in string`.** Use plain ASCII (`--` for an em-dash) inside expressions sent through the tool. Docstrings already in the file are fine; the issue is forms typed at the prompt.
+- **Em-dashes and other multi-byte characters used to fail with `Connection error: junk in string`.** Fixed in `lisp-mcp` (commit on `~/projects/lisp-mcp/lisp-mcp.lisp` switching the swank socket to binary + explicit UTF-8 encode/decode + byte-length headers). Kept here as a historical note: if you see "junk in string" again on `eval_swank`, suspect the lisp-mcp install is older than that fix, and as a stopgap use plain ASCII (`--` for an em-dash) in expressions sent through the tool until the install is updated.
 - **`(in-package :foo)` inside a `progn` doesn't affect the rest of the same form.** The reader processes the whole form before any evaluation, so subsequent unqualified symbols get interned in the *current* package, not `:foo`. Either send `(in-package …)` as its own call, or use fully-qualified symbols (`elp::frob`) in the body.
 
 Same root cause as the swank bootstrap reader-vs-eval gotcha — read happens before eval, always.

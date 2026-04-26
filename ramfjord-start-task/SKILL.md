@@ -98,7 +98,7 @@ Print, in this order:
    in the session, adapt; otherwise the above is the safe default.
 
 If the project is a Lisp project (has `.asd` files, `package.lisp`,
-etc.), mention `ramfjord-swank-worktree-image` for spinning up the
+etc.), mention `ramfjord-swank-image` for spinning up the
 per-worktree image — but don't invoke it automatically.
 
 If the user wants the branch in the merge queue, mention

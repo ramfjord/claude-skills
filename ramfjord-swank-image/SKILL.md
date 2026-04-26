@@ -1,30 +1,30 @@
 ---
-name: ramfjord-swank-worktree-image
-description: Set up and use a per-worktree Common Lisp image (SBCL + swank) wired to lisp-mcp's eval_swank, so each git worktree has its own isolated live image. Use when starting work in a new worktree, recovering an existing one, or troubleshooting why eval_swank isn't reaching the expected image.
+name: ramfjord-swank-image
+description: Set up and use a per-directory Common Lisp image (SBCL + swank) wired to lisp-mcp's eval_swank. Typically one image per worktree (so parallel tasks are isolated), but works in any directory with an `.asd` file — including the main checkout while drafting plans. Use when starting work in a new directory, recovering an existing image, or troubleshooting why eval_swank isn't reaching the expected one.
 ---
 
-# ramfjord-swank-worktree-image
+# ramfjord-swank-image
 
-Each git worktree gets its own SBCL image with a swank server, accessed via `lisp-mcp`'s `eval_swank` tool. Worktrees are isolated — different ports, different sessions, different state — so parallel features can't surprise each other. The user typically attaches their editor (nvlime/Vlime) to the same swank port for review; Claude attaches via lisp-mcp.
+Each project directory gets its own SBCL image with a swank server, accessed via `lisp-mcp`'s `eval_swank` tool. Directories are isolated — different ports, different sessions, different state — so parallel work can't surprise itself. The common case is one image per git worktree (each task gets its own); the same mechanism also works in the main checkout for plan-time exploration. Swank runs unattended in a tmux session; Claude is the only client during iteration via lisp-mcp. The user attaches their editor (nvlime/Vlime) to the same port *after* iteration, for review — so don't assume a human is sitting at an interactive debugger while you're working.
 
 This skill is the *setup* side of the workflow. For *using* the eval mechanism once it exists, see `ramfjord-coding-lisp`.
 
 ## Conventions
 
-- **One tmux session per worktree**, named after the worktree directory's basename. Example: worktree at `~/projects/elp-streams` → tmux session `elp-streams`.
-- **Port stored in `.swank-port`** at the worktree root. Plain text, just the integer. Gitignored.
-- **`.mcp.json`** at the worktree root, project-scoped, with `SWANK_PORT` set to match. Gitignored.
+- **One tmux session per directory**, named after the directory's basename. Example: worktree at `~/projects/elp-streams` → tmux session `elp-streams`. Main checkout at `~/projects/elp` → tmux session `elp`.
+- **Port stored in `.swank-port`** at the directory root. Plain text, just the integer. Gitignored.
+- **`.mcp.json`** at the directory root, project-scoped, with `SWANK_PORT` set to match. Gitignored.
 - **lisp-mcp lives at `~/projects/lisp-mcp`** with the entry script `lisp-mcp.sh`.
-- **Port range**: start at 4005, increment per worktree. Skip ports already in use (any LISTEN socket).
+- **Port range**: start at 4005, increment per directory. Skip ports already in use (any LISTEN socket).
 
 ## Quick checks before doing anything
 
-When opening a worktree, first establish what exists:
+When opening a directory, first establish what exists:
 
 ```bash
-# Is there a session for this worktree?
-WORKTREE_NAME=$(basename "$PWD")
-tmux has-session -t "$WORKTREE_NAME" 2>/dev/null && echo "session: yes" || echo "session: no"
+# Is there a session for this directory?
+SESSION_NAME=$(basename "$PWD")
+tmux has-session -t "$SESSION_NAME" 2>/dev/null && echo "session: yes" || echo "session: no"
 
 # Is there a recorded port?
 [ -f .swank-port ] && echo "port: $(cat .swank-port)" || echo "port: none"
@@ -49,22 +49,22 @@ Do this automatically — don't ask the user first. By invoking this skill
 they've already opted into the per-worktree image setup; the only cost
 is one Claude restart at the end (which they'd have to do anyway).
 
-Run the bootstrap script from this skill directory, passing the worktree path:
+Run the bootstrap script from this skill directory, passing the directory path:
 
 ```bash
-~/.claude/skills/ramfjord-swank-worktree-image/bootstrap-swank.sh "$PWD"
+~/.claude/skills/ramfjord-swank-image/bootstrap-swank.sh "$PWD"
 ```
 
 The script:
 - picks a free port starting at 4005
-- derives the ASDF system name from the worktree's `*.asd` file
-- creates a tmux session named after the worktree
+- derives the ASDF system name from the directory's `*.asd` file
+- creates a tmux session named after the directory
 - runs `run-swank.expect` inside it (drives SBCL through the load
   sequence, blocking on the prompt rather than sleeping)
 - writes `.swank-port` and `.mcp.json` once swank is actually LISTEN
 - refuses if a tmux session of the same name already exists
 
-The bootstrap forms are: push the worktree onto `asdf:*central-registry*`,
+The bootstrap forms are: push the directory onto `asdf:*central-registry*`,
 `(ql:quickload :swank)`, `(asdf:load-system :SYSTEM)`, `(swank:create-server
 :port PORT :dont-close t)`. They are sent as **separate forms, not one
 `progn`** — the reader processes a whole form before any evaluation, so
@@ -89,9 +89,9 @@ and TCP connectivity. Run it after editing `bootstrap-swank.sh` or
 The image is alive but swank died (rare — usually means a thread error in user code took the listener down):
 
 ```bash
-WORKTREE_NAME=$(basename "$PWD")
+SESSION_NAME=$(basename "$PWD")
 PORT=$(cat .swank-port)
-tmux send-keys -t "$WORKTREE_NAME" \
+tmux send-keys -t "$SESSION_NAME" \
   "(swank:create-server :port $PORT :dont-close t)" Enter
 sleep 1
 ss -tln | grep -q ":$PORT" || echo "WARNING: swank still not listening"
@@ -111,19 +111,19 @@ Same image as Claude's `eval_swank`. State changes from either side are visible 
 
 ## Teardown
 
-When a worktree is being deleted:
+When a directory is being deleted (worktree removal, etc.):
 
 ```bash
-WORKTREE_NAME=$(basename "$PWD")
-tmux kill-session -t "$WORKTREE_NAME" 2>/dev/null
-# .swank-port and .mcp.json go away with the worktree directory
+SESSION_NAME=$(basename "$PWD")
+tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+# .swank-port and .mcp.json go away with the directory
 ```
 
 Always confirm with the user before killing a session — they may have unsaved REPL state (rebuilding which costs them).
 
 ## Anti-patterns
 
-- **Don't share images across worktrees.** The whole point of per-worktree images is isolation. If two worktrees both want port 4005, allocate the second one to 4006.
+- **Don't share images across directories.** The whole point of per-directory images is isolation: each worktree gets its own so parallel tasks can't surprise each other, and the main checkout's planning image doesn't bleed into task images. If two directories both want port 4005, allocate the second one to 4006.
 - **Don't try to persist images across reboots.** When the host reboots, all images go away cleanly. Restart sessions on demand. (`sb-ext:save-lisp-and-die` exists but using it routinely defeats the "code in files, image is workspace" mental model.)
 - **Don't put project-specific eval logic in this skill.** This skill sets up the *mechanism*. What to do once the mechanism exists belongs in `coding-lisp` or project-specific guidance.
 - **Don't commit `.mcp.json` or `.swank-port`.** Both are per-machine, per-worktree state. Add to `.gitignore` if they aren't already.
@@ -139,4 +139,4 @@ mcp__lisp__eval_swank: (list :pid (sb-posix:getpid)
 
 Expected: a PID matching the `sbcl` process bound to your `.swank-port`, and `:LOADED T`.
 
-If the PID doesn't match, lisp-mcp is talking to a different image than you expect — most often because two worktrees collided on a port, or because an old session is still holding 4005 from a prior worktree.
+If the PID doesn't match, lisp-mcp is talking to a different image than you expect — most often because two directories collided on a port, or because an old session is still holding 4005 from a prior directory.
