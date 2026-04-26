@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-# test.sh — exercise bootstrap-swank.sh against fixtures/elp.
+# test.sh — single-dir smoke test of bootstrap-swank.sh against fixtures/elp.
 #
-# Asserts:
-#   - .swank-session is written and names a live tmux session
-#   - the session name has the form <basename>-<hash>
-#   - .swank-port and .mcp.json are written
-#   - the recorded port is LISTEN
-#   - a TCP connection to that port succeeds
-#
-# Cleans up tmux session and dropped files on exit.
+# Thin wrapper around assert-swank-healthy.sh. Cleans up before and after.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,20 +25,5 @@ cleanup() {
 trap cleanup EXIT
 cleanup  # drop any leftover state from a prior run
 
-"$SCRIPT_DIR/bootstrap-swank.sh" "$FIXTURE"
-
-fail() { echo "FAIL: $*" >&2; exit 1; }
-
-[[ -f "$FIXTURE/.swank-session" ]] || fail ".swank-session not written"
-SESSION="$(cat "$FIXTURE/.swank-session")"
-tmux has-session -t "$SESSION" 2>/dev/null || fail "no tmux session '$SESSION'"
-[[ "$SESSION" == "$(basename "$FIXTURE")-"* ]] \
-  || fail "session name '$SESSION' missing basename-hash format"
-[[ -f "$FIXTURE/.swank-port" ]] || fail ".swank-port not written"
-[[ -f "$FIXTURE/.mcp.json"  ]] || fail ".mcp.json not written"
-
-PORT="$(cat "$FIXTURE/.swank-port")"
-ss -tln | awk '{print $4}' | grep -q ":${PORT}\$" || fail "port $PORT not LISTEN"
-timeout 2 bash -c "</dev/tcp/127.0.0.1/$PORT" || fail "cannot connect to 127.0.0.1:$PORT"
-
-echo "PASS: bootstrap-swank.sh works against $FIXTURE on port $PORT"
+"$SCRIPT_DIR/assert-swank-healthy.sh" "$FIXTURE"
+echo "PASS: bootstrap-swank.sh works against $FIXTURE"
