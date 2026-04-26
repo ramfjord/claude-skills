@@ -1,12 +1,16 @@
 ---
 name: ramfjord-do-plan
-description: Walk a CURRENT_PLAN.md's Commits list one at a time — implement, verify, show diff, get user approval, commit, mark complete, repeat. Use when invoked with a plan path (typically launched by ramfjord-start-task in a fresh worktree session), or when the user says "work the plan", "do the plan", "continue the plan", "next commit", or "resume".
+description: Walk a plan's Commits list one at a time — implement, verify, show diff, get user approval, append decisions to the plan, commit plan + code together, repeat. Use when invoked with a plan path (typically launched by ramfjord-start-task in a fresh worktree session), or when the user says "work the plan", "do the plan", "continue the plan", "next commit", or "resume".
 ---
 
 # ramfjord-do-plan
 
 Execute a plan by walking its `## Commits` section one commit at a
-time, gating each `git commit` on user approval.
+time, gating each `git commit` on user approval. The plan file itself
+is a *living* document — decisions made during implementation get
+appended to the relevant commit's entry and committed alongside the
+code change. By the time a branch reaches `ramfjord-merge-worktree`,
+its plan reflects what actually happened.
 
 This skill is the implementation-side counterpart to
 `ramfjord-draft-plan`. The drafter sized the work into reviewable
@@ -14,35 +18,43 @@ commits; this skill walks them.
 
 ## What this skill does
 
-1. Read `CURRENT_PLAN.md` (or the path the user gave) and parse the
-   `## Commits` section into an ordered list.
+1. Read the plan path the user gave (typically `plans/<slug>.md`)
+   and parse its `## Commits` section into an ordered list.
 2. Find the first unchecked commit (skip ones already marked `✅`).
 3. For each remaining commit, in order:
    a. Announce which commit is next; show its title and *Verify:* line.
    b. Implement it.
    c. Run the verification step.
-   d. Show the diff and a proposed commit message.
-   e. **Wait for user approval** before committing. Never auto-commit.
-   f. On approval: `git commit`, then mark the entry `✅` in the plan.
-   g. Continue to the next commit, or stop if the user wants to pause.
+   d. Append a `**Decisions:**` block to that commit's entry in the
+      plan file if non-trivial decisions were resolved during
+      implementation; mark the entry `✅`.
+   e. Show the diff (code + plan edit) and a proposed commit message.
+   f. **Wait for user approval** before committing. Never auto-commit.
+   g. On approval: `git commit` (staging plan edit alongside code).
+   h. Continue to the next commit, or stop if the user wants to pause.
 
 ## Inputs
 
-- **Plan path** — optional. Defaults to `./CURRENT_PLAN.md` in the
-  current working directory. If the user gives a different path
-  (e.g., when iterating from outside a worktree), use it.
+- **Plan path** — required. Typically `plans/<slug>.md` in the
+  current repo. The launch command from `ramfjord-start-task` passes
+  this explicitly. The worktree's `CURRENT_PLAN.md` (a gitignored
+  marker stub) is *not* the plan and is not read by this skill.
 
 ## Preflight
 
 ```bash
 git rev-parse --show-toplevel    # must be in a git repo
 git rev-parse --abbrev-ref HEAD  # capture branch — should not be main
-test -f <plan-path>              # plan must exist
+test -f <plan-path>              # plan must exist (and be tracked)
 ```
 
 If the current branch is `main` (or the project's primary branch),
 warn loudly and ask before proceeding — committing plan work directly
 to main is almost always wrong. Honor the user's answer.
+
+The plan file is expected to be a tracked file in the repo (typically
+`plans/<slug>.md`). Edits to it land in commits alongside the code,
+so it must not be gitignored.
 
 If the plan file lacks a `## Commits` section, stop and offer to
 draft commits collaboratively (and update the plan in place).
@@ -133,10 +145,43 @@ If verification fails:
 - If the failure is a real design problem (not a typo), pause and
   loop in the user. Don't dig a deeper hole.
 
+### Update the plan entry
+
+Before showing the diff, edit the plan file's entry for this commit:
+
+- If non-trivial decisions were resolved during implementation,
+  append a `**Decisions:**` block with short bullets capturing each
+  resolution. The shape is:
+
+  ```
+  1. ✅ **Title** — description.
+     *Verify:* how to verify.
+     **Decisions:**
+     - <decision>: <resolution>.
+     - <decision>: <resolution>.
+  ```
+
+  Bullets are short — context for each decision is already in the
+  commit's other diff hunks; the plan entry just records the
+  resolution so future readers don't have to reconstruct it from
+  `git log -p`.
+
+- If the commit was specced clearly enough that implementation was
+  mechanical (no decisions to record), omit the `**Decisions:**`
+  block — the bare `✅` is the whole record.
+
+- Always mark the entry `✅`.
+
+The plan edit gets staged alongside the code changes; the assertion
+that every commit on a branch touches the plan file is what
+`ramfjord-merge-worktree`'s preflight relies on to detect
+contract-skipping.
+
 ### Show diff and propose commit message
 
 Run `git status` and `git diff` (and `git diff --cached` if anything
-is staged). Surface the changes for review.
+is staged). Surface the changes for review — code edits and the plan
+edit together.
 
 Propose a commit message:
 - Match the repo's existing style (check `git log --oneline -10` if
@@ -149,8 +194,10 @@ Present the proposed message. Then **wait for user approval**.
 
 ### Commit on approval
 
-Stage what should be committed (be specific — don't `git add -A` if
-there are unrelated files). Use a HEREDOC for the message:
+Stage what should be committed: the code changes **and** the plan
+file edit (the `✅` mark plus any `**Decisions:**` block). Be specific
+— don't `git add -A` if there are unrelated files. Use a HEREDOC for
+the message:
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -163,23 +210,13 @@ EOF
 )"
 ```
 
+The commit message focuses on the code change; it doesn't restate
+the decisions, since those live in the staged plan diff right next
+to the code that motivated them.
+
 If a pre-commit hook fails: investigate the failure, fix the underlying
 issue, re-stage, **commit fresh** (do not `--amend`, the failed commit
 didn't happen). Never `--no-verify`.
-
-After the commit succeeds, mark the entry complete in `CURRENT_PLAN.md`:
-
-```
-1. **<title>** — ...
-```
-becomes
-```
-1. ✅ **<title>** — ...
-```
-
-This edit is in the gitignored worktree copy of the plan; it doesn't
-get committed. Its purpose is so a context-reset Claude can resume in
-the right place.
 
 ### Continue
 
@@ -204,7 +241,8 @@ Don't re-run earlier verifies or re-show their diffs.
 
 ## When the plan needs editing
 
-The plan is mutable. Edit `CURRENT_PLAN.md` directly when:
+The plan is mutable. Edit the plan file (e.g., `plans/<slug>.md`)
+directly when:
 
 - A commit turns out to be two commits — split it, renumber.
 - A commit is no longer needed — remove it (or mark it `✅` with a
@@ -222,12 +260,18 @@ When all commits are `✅`:
 
 1. Confirm with the user: anything else for this branch?
 2. Suggest reasonable next steps:
-   - Push the branch and open a PR.
-   - Run `ramfjord-merge-order` to enqueue.
+   - Run `ramfjord-merge-worktree` to merge back to main and tear
+     down the worktree.
+   - Push the branch and open a PR (if a PR-based workflow is wanted
+     instead of direct merge).
+   - Run `ramfjord-merge-order` to enqueue if not merging immediately.
    - Draft a follow-up plan (often the `Future plans` section of the
      current plan has candidates).
 3. Don't push, open a PR, or merge automatically — those are
    user-gated.
+
+The `✅` marks reach `main` via the merge — no need to manually
+re-mark the durable plan after merging.
 
 ## What this skill does NOT do
 
@@ -236,8 +280,6 @@ When all commits are `✅`:
   the diff + message.
 - `--amend`, force-push, or any destructive git operation.
 - Skip pre-commit hooks.
-- Touch the durable `./plans/<slug>.md` — only the gitignored
-  worktree `CURRENT_PLAN.md` gets the `✅` marks.
 - Open PRs, push, or merge. User-gated.
 - Run in parallel across commits. Strictly serial — one at a time,
   approval between each.

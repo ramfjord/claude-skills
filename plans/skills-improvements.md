@@ -32,6 +32,13 @@ Make pushback, gap-finding, motivation probing, and scale estimation default beh
 
 ### 2. Merge-worktree skill (`ramfjord-merge-worktree`)
 
+**Superseded** by `plans/living-plans.md` (2026-04-26). The merge-worktree
+work is folded into that plan along with related changes to `do-plan`,
+`start-task`, and `draft-plan` for inline plan-update behavior. The
+notes below are retained for context on how the requirements evolved.
+
+
+
 Replace the TBD note in `ramfjord-start-task/SKILL.md` with a real skill that closes out a worktree by merging it back to main and tearing down its scaffolding.
 
 **Naming**: `ramfjord-merge-worktree`. Considered `finish-task` (symmetry with `start-task`) but `merge-worktree` is more descriptive of the central act. Still changeable if it grates in practice.
