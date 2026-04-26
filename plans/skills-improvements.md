@@ -88,29 +88,33 @@ Topic 2 commits to be drafted once its open questions are resolved.
 
 **Estimate**: ~200 LoC across 6–8 files in `ramfjord-swank-image/`. One subsystem.
 
-1. **Hash-based session naming + `.swank-session`** (~50 LoC)
+1. ✅ **Hash-based session naming + `.swank-session`** (~50 LoC)
    - `bootstrap-swank.sh`: derive session name as `<basename>-<sha256(realpath)|head -c8>`, write to `.swank-session`.
    - `SKILL.md`: update Conventions section and the "Quick checks" bash snippet (currently `SESSION_NAME=$(basename "$PWD")` → read from `.swank-session`).
    - `test.sh`: update session-name assertion to match (will be replaced wholesale in commit 2).
    - `.swank-session` is in user's global gitignore — no per-repo gitignore change needed.
 
-2. **Extract `assert-swank-healthy.sh` helper, slim `test.sh`** (~40 LoC moved)
+2. ✅ **Extract `assert-swank-healthy.sh` helper, slim `test.sh`** (~40 LoC moved)
    - New `assert-swank-healthy.sh DIR` with the per-dir assertions currently inline in `test.sh`.
    - `test.sh` becomes a thin wrapper: calls the helper on `fixtures/elp`, keeps its cleanup trap.
    - Pure refactor — both green at end of commit.
 
-3. **Add cleanup mode** (~60 LoC)
+3. ✅ **Test recovery from stale `.swank-session`** (~20 LoC)
+   - Extend `test.sh`: after the first happy-path assertion, `tmux kill-session` to simulate a host reboot, then run `assert-swank-healthy.sh` again and assert the same session name comes back live (proves bootstrap recovers when `.swank-session` outlives its tmux session).
+   - **No production code change.** This works today because the realpath hash is deterministic — the test pins that property so a future hash-scheme change can't silently break recovery without us noticing.
+
+4. ✅ **Add cleanup mode** (~60 LoC)
    - New `cleanup-swank.sh DIR` — reads `.swank-session`, `tmux kill-session`, removes `.swank-session` / `.swank-port` / `.mcp.json`, reports what was torn down (or that nothing was there). Idempotent.
    - `SKILL.md`: new "Cleanup" section documenting when this is invoked (today: manual; later: by `merge-worktree`).
    - Verify in commit body: bootstrap → cleanup → assert nothing left.
 
-4. **Add `test-isolation.sh`** (~100 LoC)
+5. ✅ **Add `test-isolation.sh`** (~100 LoC)
    - Bootstrap 2 `git worktree`s under `fixtures/elp/worktrees/` + a `cp -r fixtures/elp /tmp/elp-collision-$$` for the cross-project basename collision case.
    - Call `assert-swank-healthy.sh` on all 4.
    - Assert: 4 distinct session names, 4 distinct ports, state isolation via `*eval-marker*` defparameter.
    - Cleanup trap: `cleanup-swank.sh` on all 4 + `git worktree remove` + `rm -rf` temp dir.
 
-**Sequencing**: C1 first (everything assumes new naming). C2 before C3 to keep the refactor commit clean. C3 before C4 so test-isolation.sh's trap can use `cleanup-swank.sh` rather than ad-hoc tmux/rm.
+**Sequencing**: C1 first (everything assumes new naming). C2 before C3–C5 (helper exists for reuse). C3 (recovery test) is independent of C4/C5 but lives near C2 since both touch `test.sh`. C4 before C5 so test-isolation.sh's trap can use `cleanup-swank.sh` rather than ad-hoc tmux/rm.
 
 ## Future plans
 
