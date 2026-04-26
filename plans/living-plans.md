@@ -200,7 +200,7 @@ One subsystem (the skills repo).
    - *Verify:* read-through of the SKILL — describes the new behavior
      without internal contradictions; example renders right.
 
-2. **Update `ramfjord-start-task` to write marker stub** (~30 LoC)
+2. ✅ **Update `ramfjord-start-task` to write marker stub** (~30 LoC)
    - `SKILL.md`: drop the `cp` step from *Copy the plan into the
      worktree*; rename that section to *Write the worktree marker*.
    - Stub content: `Branch:` + `Plan source:` lines only.

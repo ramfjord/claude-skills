@@ -1,6 +1,6 @@
 ---
 name: ramfjord-start-task
-description: Start a new task from a plan in ./plans/ — creates a git branch + worktree under ./worktrees/, copies the plan into it as CURRENT_PLAN.md, and prints a command to launch a new Claude session there with ramfjord-do-plan invoked. Use when the user says "start a task", "kick off X", "let's begin work on Y", or "I'm ready to start on this plan".
+description: Start a new task from a plan in ./plans/ — creates a git branch + worktree under ./worktrees/, writes a CURRENT_PLAN.md marker stub identifying the plan, and prints a command to launch a new Claude session there with ramfjord-do-plan invoked. Use when the user says "start a task", "kick off X", "let's begin work on Y", or "I'm ready to start on this plan".
 ---
 
 # ramfjord-start-task
@@ -60,25 +60,22 @@ git worktree add -b <branch> ./worktrees/<branch> main
 
 Branch from `main` explicitly, not whatever HEAD happens to be.
 
-## Copy the plan into the worktree
+## Write the worktree marker
 
 ```bash
-cp plans/<slug>.md ./worktrees/<branch>/CURRENT_PLAN.md
-```
-
-The original in `plans/` is the durable design doc and stays put
-unchanged. The copy in the worktree is the mutable working copy —
-`ramfjord-do-plan` marks commits as it walks them by editing this
-file (`1.` → `1. ✅`). It's gitignored, so those edits never reach
-the durable plan.
-
-If the copied file doesn't already include a `Branch:` line near the
-top, add one so the worktree's notes are self-describing:
-
-```
+cat > ./worktrees/<branch>/CURRENT_PLAN.md <<EOF
 Branch: <branch>
 Plan source: ./plans/<slug>.md
+EOF
 ```
+
+`CURRENT_PLAN.md` is a tiny marker file (gitignored) that identifies
+which plan this worktree is working on. It's not a copy of the plan
+content — `ramfjord-do-plan` reads `plans/<slug>.md` directly via
+the branch's working tree, edits it inline as commits land, and
+stages those edits alongside the code. The marker exists so anyone
+landing in the worktree can see what's being worked on without
+needing to read `git log` or guess from the branch name.
 
 ## Hand off
 
@@ -91,7 +88,7 @@ Print, in this order:
    in the worktree with `ramfjord-do-plan` invoked:
 
    ```
-   (cd ./worktrees/<branch> && claude "/ramfjord-do-plan CURRENT_PLAN.md")
+   (cd ./worktrees/<branch> && claude "/ramfjord-do-plan plans/<slug>.md")
    ```
 
    If you've seen the user use a different invocation style elsewhere
@@ -112,7 +109,9 @@ If the user wants the branch in the merge queue, mention
   `CURRENT_PLAN.md` is the only connection; if you want richer
   tracking, edit the plan in `./plans/` by hand.
 - Enqueue in `MERGE_ORDER.md`. Use `ramfjord-merge-order` separately.
-- Mark tasks done or merge branches. Separate `finish-task` skill (TBD).
+- Mark tasks done or merge branches. Use `ramfjord-merge-worktree`
+  for closing out a worktree: it merges the branch back to main and
+  tears down the worktree + swank image.
 - Stack branches. All branches start from `main`.
 - Touch `main` with any commits. The skill makes no commits at all —
   the worktree is empty of changes until the user starts working.
