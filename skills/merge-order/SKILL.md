@@ -1,9 +1,9 @@
 ---
-name: ramfjord-merge-order
+name: merge-order
 description: Maintain ./plans/MERGE_ORDER.md, the agreed merge order for in-flight branches. Read, append, remove, or reorder entries. Use when starting/finishing work, when queue-jumping for a yak-shave, or when the user asks "what's the merge order" / "what merges next" / "move X before Y".
 ---
 
-# ramfjord-merge-order
+# ramfjord:merge-order
 
 `./plans/MERGE_ORDER.md` is a coordination contract between agents working in different worktrees. It is the **only** authoritative source for the order in which active branches should merge into `main`. It does not influence base branches — every branch is cut from `main` and rebases only onto `main`.
 

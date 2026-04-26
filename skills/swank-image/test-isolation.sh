@@ -114,7 +114,7 @@ for i in 0 1 2 3; do
 done
 
 # --- merge-worktree teardown hand-off ---
-# Exercise the mechanical sequence ramfjord-merge-worktree runs after
+# Exercise the mechanical sequence ramfjord:merge-worktree runs after
 # a successful merge (the Claude-driven skill itself is not testable
 # here, but the scripted bits are): cleanup-swank → worktree remove →
 # branch delete. WT1 is the victim; WT2 stays around so the cleanup

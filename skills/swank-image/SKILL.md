@@ -1,13 +1,13 @@
 ---
-name: ramfjord-swank-image
+name: swank-image
 description: Set up and use a per-directory Common Lisp image (SBCL + swank) wired to lisp-mcp's eval_swank. Typically one image per worktree (so parallel tasks are isolated), but works in any directory with an `.asd` file — including the main checkout while drafting plans. Use when starting work in a new directory, recovering an existing image, or troubleshooting why eval_swank isn't reaching the expected one.
 ---
 
-# ramfjord-swank-image
+# ramfjord:swank-image
 
 Each project directory gets its own SBCL image with a swank server, accessed via `lisp-mcp`'s `eval_swank` tool. Directories are isolated — different ports, different sessions, different state — so parallel work can't surprise itself. The common case is one image per git worktree (each task gets its own); the same mechanism also works in the main checkout for plan-time exploration. Swank runs unattended in a tmux session; Claude is the only client during iteration via lisp-mcp. The user attaches their editor (nvlime/Vlime) to the same port *after* iteration, for review — so don't assume a human is sitting at an interactive debugger while you're working.
 
-This skill is the *setup* side of the workflow. For *using* the eval mechanism once it exists, see `ramfjord-coding-lisp`.
+This skill is the *setup* side of the workflow. For *using* the eval mechanism once it exists, see `ramfjord:coding-lisp`.
 
 ## Conventions
 
@@ -59,7 +59,7 @@ is one Claude restart at the end (which they'd have to do anyway).
 Run the bootstrap script from this skill directory, passing the directory path:
 
 ```bash
-~/.claude/skills/ramfjord-swank-image/bootstrap-swank.sh "$PWD"
+${CLAUDE_PLUGIN_ROOT}/skills/swank-image/bootstrap-swank.sh "$PWD"
 ```
 
 The script:
@@ -98,7 +98,7 @@ After bootstrap, **the MCP tools are not yet available in the current Claude ses
 
 > Setup complete on port `$PORT`. Restart Claude in this directory (or run `/mcp`) to pick up `eval_swank`.
 
-Then `ramfjord-coding-lisp` takes over for the actual work.
+Then `ramfjord:coding-lisp` takes over for the actual work.
 
 ### Testing the bootstrap
 
@@ -138,13 +138,13 @@ When a directory's image is no longer needed (worktree removal, retiring
 a project, recovering from a wedged image), run:
 
 ```bash
-~/.claude/skills/ramfjord-swank-image/cleanup-swank.sh "$DIR"
+${CLAUDE_PLUGIN_ROOT}/skills/swank-image/cleanup-swank.sh "$DIR"
 ```
 
 The script reads `.swank-session`, kills the named tmux session if it's
 alive, and removes `.swank-session`, `.swank-port`, and `.mcp.json`. It
 is idempotent — missing pieces are no-ops, never errors. The
-`ramfjord-merge-worktree` skill (when implemented) calls this during
+`ramfjord:merge-worktree` skill (when implemented) calls this during
 worktree teardown.
 
 Always confirm with the user before killing a session in an actively-used

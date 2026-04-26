@@ -6,7 +6,7 @@
 # Exits 0 if every commit's diff includes <plan-path>.
 # Exits 1 (and lists offending commits) otherwise.
 #
-# Used by ramfjord-merge-worktree's preflight to detect commits that
+# Used by ramfjord:merge-worktree's preflight to detect commits that
 # bypassed do-plan's contract of staging plan + code together.
 
 set -euo pipefail

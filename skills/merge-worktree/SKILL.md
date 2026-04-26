@@ -1,17 +1,17 @@
 ---
-name: ramfjord-merge-worktree
-description: Close out a finished worktree — verify the branch is ready, merge it back to main with --ff, and tear down the worktree (swank image, worktree dir, branch). Use when the user says "merge the worktree", "finish task", "close out X", "wrap up the branch", or after `ramfjord-do-plan` reports all commits done.
+name: merge-worktree
+description: Close out a finished worktree — verify the branch is ready, merge it back to main with --ff, and tear down the worktree (swank image, worktree dir, branch). Use when the user says "merge the worktree", "finish task", "close out X", "wrap up the branch", or after `ramfjord:do-plan` reports all commits done.
 ---
 
-# ramfjord-merge-worktree
+# ramfjord:merge-worktree
 
-End-of-task counterpart to `ramfjord-start-task`. Takes a worktree
+End-of-task counterpart to `ramfjord:start-task`. Takes a worktree
 whose plan is fully implemented, sanity-checks the branch, merges it
 back to `main`, and tears down the scaffolding so nothing is left
 hanging around.
 
 This skill is mostly preflight — by the time `merge-worktree` runs,
-`ramfjord-do-plan` has already done the per-commit work of recording
+`ramfjord:do-plan` has already done the per-commit work of recording
 decisions in the plan file and committing them alongside the code.
 The plan on the branch already reflects what happened; the merge
 just delivers it to `main`.
@@ -60,7 +60,7 @@ Then walk these checks in order, stopping on the first failure:
 5. **Every commit on `main..<branch>` touches the plan file.** Run:
 
    ```bash
-   ~/.claude/skills/ramfjord-merge-worktree/check-plan-coverage.sh \
+   ${CLAUDE_PLUGIN_ROOT}/skills/merge-worktree/check-plan-coverage.sh \
      <branch> plans/<slug>.md
    ```
 
@@ -103,7 +103,7 @@ Once the merge succeeds:
 
 ```bash
 # 1. Clean up the swank image (if any)
-~/.claude/skills/ramfjord-swank-image/cleanup-swank.sh \
+${CLAUDE_PLUGIN_ROOT}/skills/swank-image/cleanup-swank.sh \
   ./worktrees/<branch>
 
 # 2. Remove the worktree
@@ -137,7 +137,7 @@ Plan file plans/<slug>.md is now updated on main.
 ```
 
 Suggest next steps if obvious from the plan's *Future plans* section
-(those are candidates for the next `ramfjord-draft-plan` invocation).
+(those are candidates for the next `ramfjord:draft-plan` invocation).
 
 ## What this skill does NOT do
 
@@ -146,7 +146,7 @@ Suggest next steps if obvious from the plan's *Future plans* section
 - **Open PRs.** This skill is for direct-to-main workflows. If the
   project is PR-based, push the branch and open the PR instead of
   invoking this skill.
-- **Touch `MERGE_ORDER.md`.** Queue management is `ramfjord-merge-order`.
+- **Touch `MERGE_ORDER.md`.** Queue management is `ramfjord:merge-order`.
   If the merged branch was queued, remove its entry there separately.
 - **Force-push, `--amend`, or any destructive history rewrite.**
 - **Auto-trigger from `do-plan`.** `do-plan` runs in the worktree's

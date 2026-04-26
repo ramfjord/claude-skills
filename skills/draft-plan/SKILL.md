@@ -1,17 +1,17 @@
 ---
-name: ramfjord-draft-plan
+name: draft-plan
 description: Draft or edit a project plan as a markdown file under ./plans/. Reads sibling plans first to spot sequencing dependencies and shared work, so a new plan can defer or piggyback on what's already drafted instead of duplicating effort. Use when the user says "draft a plan", "let's plan X", "write a plan for Y", or refers to "the plan" / "a plan" in this repo.
 ---
 
-# ramfjord-draft-plan
+# ramfjord:draft-plan
 
 Plans live in `./plans/<slug>.md` at the repo root. They are committed, human-edited markdown — the durable artifact for "here's how we intend to approach X."
 
 A plan covers **exactly one branch's worth of work** — what will land as a single feature branch, structured as an ordered series of commits. Work that is genuinely "later, separate scope" goes in a `Future plans` section (one-liners), not as additional sections of this plan; draft those as their own plans when ready.
 
-`ramfjord-start-task` later carries the chosen plan into a worktree (writing a small `CURRENT_PLAN.md` marker file that points back at `plans/<slug>.md`); `ramfjord-do-plan` walks the `Commits` list one item at a time, editing the plan as it goes.
+`ramfjord:start-task` later carries the chosen plan into a worktree (writing a small `CURRENT_PLAN.md` marker file that points back at `plans/<slug>.md`); `ramfjord:do-plan` walks the `Commits` list one item at a time, editing the plan as it goes.
 
-Plans are *living* documents. `ramfjord-do-plan` appends a `**Decisions:**` block to each commit's entry as decisions get resolved during implementation, and stages those edits alongside the code in the same commit. So when drafting, your job is to verify the proposed approach is feasible and size each commit into something reviewable — but you don't need to nail every implementation detail. Ambiguities that surface during the commit get resolved at execution time and recorded in the plan via `do-plan`'s decisions appends. Over-specifying upfront just creates churn when execution refines it.
+Plans are *living* documents. `ramfjord:do-plan` appends a `**Decisions:**` block to each commit's entry as decisions get resolved during implementation, and stages those edits alongside the code in the same commit. So when drafting, your job is to verify the proposed approach is feasible and size each commit into something reviewable — but you don't need to nail every implementation detail. Ambiguities that surface during the commit get resolved at execution time and recorded in the plan via `do-plan`'s decisions appends. Over-specifying upfront just creates churn when execution refines it.
 
 ## What this skill does
 
@@ -91,7 +91,7 @@ Ordered list of atomic, reviewable commits. Each must leave the tree green (test
 Two sections are load-bearing for this skill:
 
 - **Related plans** — even "none — checked `./plans/` on <date>" is a useful entry, because the next drafter knows the cross-check happened.
-- **Commits** — `ramfjord-do-plan` parses this section. Without it the plan can be read by humans but not walked by the do-plan skill.
+- **Commits** — `ramfjord:do-plan` parses this section. Without it the plan can be read by humans but not walked by the do-plan skill.
 
 ### Sizing commits
 
@@ -118,6 +118,6 @@ Tell the user:
 
 ## What this skill does NOT do
 
-- Execute the plan. Use `ramfjord-start-task` when ready to begin work.
+- Execute the plan. Use `ramfjord:start-task` when ready to begin work.
 - Commit the file. The user reviews and commits.
 - Track plan status (done / abandoned / superseded). That's a separate concern; if it comes up, suggest a convention rather than inventing one here.

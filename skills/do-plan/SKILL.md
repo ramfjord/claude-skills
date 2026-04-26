@@ -1,19 +1,19 @@
 ---
-name: ramfjord-do-plan
-description: Walk a plan's Commits list one at a time — implement, verify, show diff, get user approval, append decisions to the plan, commit plan + code together, repeat. Use when invoked with a plan path (typically launched by ramfjord-start-task in a fresh worktree session), or when the user says "work the plan", "do the plan", "continue the plan", "next commit", or "resume".
+name: do-plan
+description: Walk a plan's Commits list one at a time — implement, verify, show diff, get user approval, append decisions to the plan, commit plan + code together, repeat. Use when invoked with a plan path (typically launched by ramfjord:start-task in a fresh worktree session), or when the user says "work the plan", "do the plan", "continue the plan", "next commit", or "resume".
 ---
 
-# ramfjord-do-plan
+# ramfjord:do-plan
 
 Execute a plan by walking its `## Commits` section one commit at a
 time, gating each `git commit` on user approval. The plan file itself
 is a *living* document — decisions made during implementation get
 appended to the relevant commit's entry and committed alongside the
-code change. By the time a branch reaches `ramfjord-merge-worktree`,
+code change. By the time a branch reaches `ramfjord:merge-worktree`,
 its plan reflects what actually happened.
 
 This skill is the implementation-side counterpart to
-`ramfjord-draft-plan`. The drafter sized the work into reviewable
+`ramfjord:draft-plan`. The drafter sized the work into reviewable
 commits; this skill walks them.
 
 ## What this skill does
@@ -36,7 +36,7 @@ commits; this skill walks them.
 ## Inputs
 
 - **Plan path** — required. Typically `plans/<slug>.md` in the
-  current repo. The launch command from `ramfjord-start-task` passes
+  current repo. The launch command from `ramfjord:start-task` passes
   this explicitly. The worktree's `CURRENT_PLAN.md` (a gitignored
   marker stub) is *not* the plan and is not read by this skill.
 
@@ -69,7 +69,7 @@ Before starting any commit, scan the available-skills list (in the
 system reminder) for skills whose trigger conditions fire on this
 repo or plan. Signals to look at:
 
-- File extensions in the repo (`.lisp`/`.cl` → `ramfjord-coding-lisp`,
+- File extensions in the repo (`.lisp`/`.cl` → `ramfjord:coding-lisp`,
   `.ipynb` → notebook skills, etc.).
 - Plan or commit text mentioning a domain a skill covers (REPL, swank,
   worktree image, Claude API, security review).
@@ -174,7 +174,7 @@ Before showing the diff, edit the plan file's entry for this commit:
 
 The plan edit gets staged alongside the code changes; the assertion
 that every commit on a branch touches the plan file is what
-`ramfjord-merge-worktree`'s preflight relies on to detect
+`ramfjord:merge-worktree`'s preflight relies on to detect
 contract-skipping.
 
 ### Show diff and propose commit message
@@ -260,11 +260,11 @@ When all commits are `✅`:
 
 1. Confirm with the user: anything else for this branch?
 2. Suggest reasonable next steps:
-   - Run `ramfjord-merge-worktree` to merge back to main and tear
+   - Run `ramfjord:merge-worktree` to merge back to main and tear
      down the worktree.
    - Push the branch and open a PR (if a PR-based workflow is wanted
      instead of direct merge).
-   - Run `ramfjord-merge-order` to enqueue if not merging immediately.
+   - Run `ramfjord:merge-order` to enqueue if not merging immediately.
    - Draft a follow-up plan (often the `Future plans` section of the
      current plan has candidates).
 3. Don't push, open a PR, or merge automatically — those are
@@ -275,7 +275,7 @@ re-mark the durable plan after merging.
 
 ## What this skill does NOT do
 
-- Draft plans. That's `ramfjord-draft-plan`.
+- Draft plans. That's `ramfjord:draft-plan`.
 - Auto-commit. Every commit is gated on explicit user approval of
   the diff + message.
 - `--amend`, force-push, or any destructive git operation.

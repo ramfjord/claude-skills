@@ -1,13 +1,17 @@
 # Skills workspace
 
-Personal Claude Code skills for my dev workflow. Each top-level directory is one skill.
+Personal Claude Code skills, packaged as the `ramfjord` plugin. Installed, skills appear as `ramfjord:coding-lisp`, `ramfjord:do-plan`, etc.
+
+## Layout
+
+- `.claude-plugin/plugin.json` — plugin manifest
+- `.claude-plugin/marketplace.json` — marketplace catalog (this repo is its own marketplace)
+- `skills/<name>/SKILL.md` — one directory per skill (no `ramfjord-` prefix on dir or `name:` field; the plugin namespace handles disambiguation)
+- `plans/` — in-flight plans for ongoing work
+- `fixtures/elp/` — gitignored clone of https://github.com/ramfjord/elp, used as a target repo when exercising the lisp skills. Re-clone if missing.
 
 ## Conventions
 
-- **Naming**: every skill directory and the `name:` in its `SKILL.md` frontmatter is prefixed `ramfjord-`. The prefix namespaces these so they can sit alongside skills authored by others without collision. Keep it on every new skill.
-- **Layout**: a skill is a directory containing `SKILL.md` (with frontmatter: `name`, `description`, optionally `model`) plus any supporting scripts/assets it references by relative path.
+- **Cross-references between skills** use the installed form (`ramfjord:do-plan`, not `do-plan` or `ramfjord-do-plan`). That matches what the model sees at runtime.
+- **Script paths inside skills** use `${CLAUDE_PLUGIN_ROOT}/skills/<name>/<script>.sh` so they resolve when installed via the marketplace, not just when run from this checkout.
 - **Commits**: short imperative subject ("Add X", "Retire Y", "Update Z for ..."), logical units (one skill change per commit when practical). No Claude co-author trailer — see `git log` for the established style.
-
-## Testing lisp skills
-
-`fixtures/elp/` is a clone of https://github.com/ramfjord/elp, gitignored. It's the target repo for exercising `ramfjord-coding-lisp` and `ramfjord-swank-image`. If it's missing, re-clone it there rather than picking a different repo, so the skills' assumptions (small CL project, known structure) hold.

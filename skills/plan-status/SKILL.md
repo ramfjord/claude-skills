@@ -1,11 +1,11 @@
 ---
-name: ramfjord-plan-status
+name: plan-status
 description: Report the status of plans under ./plans/ by mapping each to a branch/worktree and checking whether work is unstarted, in flight, paused, or merged. Use when the user asks "what's the status of the plans", "which plans are in flight", "is plan X started", or wants a roll-up before drafting/starting new work.
 ---
 
-# ramfjord-plan-status
+# ramfjord:plan-status
 
-Tells the user, for each `./plans/*.md`, whether the corresponding work is unstarted, in flight, paused, or done. Pairs with `ramfjord-draft-plan` (authoring) and `ramfjord-start-task` (execution).
+Tells the user, for each `./plans/*.md`, whether the corresponding work is unstarted, in flight, paused, or done. Pairs with `ramfjord:draft-plan` (authoring) and `ramfjord:start-task` (execution).
 
 ## Plan ↔ branch mapping
 
@@ -14,7 +14,7 @@ For a plan at `./plans/<slug>.md`, the branch is determined as follows, in order
 1. **Explicit `Branch:` line** in the plan file (anywhere, but conventionally near the top). Wins if present. Format: `Branch: <branch-name>` on its own line. Frontmatter `branch:` also accepted.
 2. **Slug fallback**: branch name == file slug. `plans/add-retry.md` → branch `add-retry` → worktree `worktrees/add-retry/`.
 
-Worktree path is always `./worktrees/<branch>/` (matches `ramfjord-start-task`).
+Worktree path is always `./worktrees/<branch>/` (matches `ramfjord:start-task`).
 
 If neither resolves to anything, the plan is **unstarted**.
 
@@ -61,7 +61,7 @@ Keep it terse. The user is scanning for "what should I do next," not reading pro
 
 ## Sequencing hints (optional, when asked)
 
-If the user asks "what should I work on next" or similar, layer on the **Related plans** sections from each plan file (see `ramfjord-draft-plan`):
+If the user asks "what should I work on next" or similar, layer on the **Related plans** sections from each plan file (see `ramfjord:draft-plan`):
 
 - An **unstarted** plan whose related plans are all **merged** is ripe.
 - An **unstarted** plan blocked on an **in flight** plan should wait.

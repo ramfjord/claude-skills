@@ -1,0 +1,11 @@
+{
+  "name": "ramfjord",
+  "owner": { "name": "Thomas Ramfjord" },
+  "plugins": [
+    {
+      "name": "ramfjord",
+      "description": "Personal Claude Code skills: plan/worktree/swank-image flow + Lisp REPL-driven coding.",
+      "source": "./"
+    }
+  ]
+}
