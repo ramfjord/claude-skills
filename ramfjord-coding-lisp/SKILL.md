@@ -1,6 +1,6 @@
 ---
 name: ramfjord-coding-lisp
-description: Use whenever editing, reading, or debugging Lisp-family code (Common Lisp, Scheme, Clojure, Emacs Lisp — any .lisp/.cl/.scm/.ss/.rkt/.clj/.cljs/.el file). Encodes REPL-driven development habits that distinguish good Lisp work from edit-run-print loops, and counters reflexes carried over from non-image-based languages.
+description: Use whenever editing, reading, debugging, OR DESIGNING Lisp-family code (Common Lisp, Scheme, Clojure, Emacs Lisp — any .lisp/.cl/.scm/.ss/.rkt/.clj/.cljs/.el file). Activate during design discussions ("how should we structure…", "could we…", "what's the right way to…") about Lisp code, not just hands-on edits — the skill's perspective is most valuable *before* committing to an approach. Encodes REPL-driven development habits that distinguish good Lisp work from edit-run-print loops, counters reflexes carried over from non-image-based languages, and primes you to reach for code-as-data designs that are cheap in Lisp and expensive everywhere else.
 ---
 
 # ramfjord-coding-lisp
@@ -13,9 +13,79 @@ This skill assumes a way to evaluate forms in a live Lisp image is available. Th
 
 If no eval mechanism is available, surface that to the user before continuing — the rest of this skill assumes one exists.
 
-The five habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply.
+The habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply. The first is about **what to design** — code-as-data is the Lisp differentiator and the move you'll most often miss if you carry over reflexes from non-Lisp languages. It belongs at plan-time as much as edit-time: a misframing here ("let me build a tokenizer that emits tuples and assembles a source string") will commit you to weeks of awkward code that the right framing would have collapsed. The remaining five are about **how to work** in a live image. Same root cause for both: code is data, the image is live, so the cheap moves are different.
 
-## 1. Inspect, don't guess
+## 1. Reach for code-as-data — at plan time, not just edit time
+
+**Reflex to override:** treat code as text-or-AST-objects you have to construct, parse, and serialize by hand. Specifically, treat "produce Lisp behavior from input" as a parsing-then-codegen pipeline that builds source as text, and treat "expose Lisp behavior as a result" as a function that runs the code, with no first-class artifact representing what ran.
+
+**Do instead:** before committing to a design, ask the same question in **both directions**:
+
+- *Does the* **output** *of this problem have code shape?* — Then build/return a sexp. Don't compose source as text and `read-from-string` it; backquote constructs sexps directly. Don't hide the generated form behind an opaque "render" call; expose it as a first-class return value so callers can inspect, print, copy, or eval it.
+- *Does the* **input** *of this problem have code shape?* — Then let the **standard reader** consume it. Don't tokenize-then-assemble-source-string-then-read-from-string; that's three passes for a job the reader does in one. The variation point is a custom stream (`sb-gray:fundamental-character-input-stream`) that synthesizes characters for the reader to walk — template syntax, embedded DSLs, anything where "the eventual sexp shape" is roughly the right answer.
+
+Both directions are the same insight: `read`, `eval`, `print`, `defmacro`, backquote, `#.` are sized for daily use. Reach for them.
+
+### Concrete patterns
+
+- **Sexps as public artifacts (output side).** When a tool's job is "compute then run," return the computed sexp as a first-class value and have the run path be `(eval (compute …))`. Two payoffs: inspection is free (`prin1` the form into a `--print` flag, log it, paste it into the REPL); the eval path stops being a black box. In non-homoiconic languages, "show me the code that ran" is a debug-renderer project; in Lisp it's one line.
+
+- **The reader is your parser (input side).** When input has sexp shape, `read` from a stream — don't write a parser, don't define a grammar, don't reach for a serialization library. Files of data sexps are the simplest, most common case:
+
+  ```lisp
+  (with-open-file (s path) (read s))                  ; one top-level form
+  (with-open-file (s path)
+    (loop for f = (read s nil :eof) until (eq f :eof)
+          collect f))                                  ; multiple
+  ```
+
+  You get comments, symbols-as-enums, structural nesting, and round-trip via `prin1` for free. Common uses: configs, asset definitions, fixtures, anything Rust would reach for Ron / serde / a custom parser to handle. For inputs that *embed* Lisp inside non-Lisp (templates, DSLs that escape into surrounding text), the same idea generalizes via a custom stream that synthesizes characters for the standard reader (`sb-gray:fundamental-character-input-stream`) — but most projects only need the file-of-sexps case.
+
+- **`read` parses, `eval` executes — keep the line clean.** For data files especially: `read` the form, destructure it, dispatch on it. `eval`-ing data turns "load this config / asset / fixture" into "run arbitrary code from a file," which is almost never what you want and ties the format's meaning to whichever functions happen to be in scope.
+
+- **Anti-pattern: building Lisp source as text, then `read-from-string`-ing it back.** If you're assembling strings like `"(do-thing ~D)"` and then re-parsing them, you're doing the reader's job in two awkward stages. The fix is backquote: `` `(do-thing ,n) `` constructs the sexp directly. (Niche, but worth naming — it's the input-side cousin of "hide the generated form behind opaque execution.")
+
+- **One source, two roles via a registering macro.** When a definition needs to live *both* as a top-level `defun` (for REPL ergonomics, `M-.`, individual eval) *and* as a sexp embedded inside generated code, write a macro that does both from one source form:
+
+  ```lisp
+  (defvar *helper-sources* '())
+  (defmacro define-helper (name lambda-list &body body)
+    `(progn
+       (setf *helper-sources*
+             (append (remove ',name *helper-sources* :key #'car)
+                     (list '(,name ,lambda-list ,@body))))
+       (defun ,name ,lambda-list ,@body)))
+  ```
+
+  Codegen splices the registered sources into a `labels` block. In a non-Lisp language the equivalent is "string-template the source" or "give up and duplicate."
+
+- **`#.` to bake values into source at read time.** When a generated form references a defconstant whose value matters but whose symbol shouldn't leak, write `#.+the-constant+`. The reader substitutes the value before any later step sees the form. Niche; the right tool when "I want the number, not the binding."
+
+- **Round-trip the form to test self-containment.** For any function that returns a sexp meant to be eval-able outside its construction context, the cheapest test is `(eval (read-from-string (with-output-to-string (s) (prin1 form s))))` — possibly with `*package*` bound to whatever a consumer would use. If the round-trip's behavior diverges from direct `(eval form)`, the form has a hidden lexical/package dependency.
+
+### Triggers — when to invoke this lens
+
+**Self-cues (questions to ask at plan time, before settling on an approach):**
+
+- Does the input have sexp shape? → `read` it, don't parse it.
+- Does the output have code shape? → return a sexp, expose it; don't hide behind opaque execution.
+- Am I about to write Lisp source as text? → backquote builds the sexp directly.
+- Am I about to `read-from-string` something I constructed? → backquote, or read from a stream.
+- Is this definition appearing in two places? → registering macro can collapse runtime + codegen.
+- Would I want to inspect/test the form a function generates? → make the form the return value, not the side effect.
+
+**User-cues (phrasings that signal a code-as-data move is what they actually want):**
+
+- "Could we just *put the definition of this here*?" → registering macro for one source, two roles.
+- "Can we print the code that would run?" / "I'd like to see what gets eval'd." → return the sexp, expose it.
+- "It would be nice if this were standalone / runnable / pasteable." → wrap with `labels`/`let` so the form carries its own bindings; print it.
+- "Why is this referenced in two places?" → if those places are runtime and codegen, a macro can collapse them.
+
+### Cost: don't reach for it for problems that don't need it
+
+Code-as-data is the *cheap option in Lisp*, not the *first option for everything*. If the answer is a plain function and a plain call, write that. The trigger is "the problem has code-shaped input or output, or a duplication that crosses runtime/codegen layers" — not "I'm in Lisp so let me use macros." Macros and `eval` are everyday tools but still cost readability; reach for them when the alternative is fighting the language.
+
+## 2. Inspect, don't guess
 
 **Reflex to override:** read source files to predict what a function returns or what shape a value has.
 
@@ -44,7 +114,7 @@ The "inspect, don't guess" reflex is easy to apply when staring at a return valu
 
 Symptom that you skipped these: writing code, watching the test fail, then *only now* opening a REPL to figure out what the API actually does. If you're going to inspect to debug, inspect to design — it's the same effort earlier in the loop.
 
-## 2. Errors carry information — read them, don't escape them
+## 3. Errors carry information — read them, don't escape them
 
 **Reflex to override:** treat an error as a wall and immediately go back to reading source.
 
@@ -54,7 +124,7 @@ Symptom that you skipped these: writing code, watching the test fail, then *only
 
 If you genuinely need an interactive restart or frame inspection (rare — usually you can reproduce by calling the offending function with crafted args and reading the returned condition), say so explicitly and ask the user to attach. Otherwise: read the condition, fix the code, reload, retry.
 
-## 3. `trace` over print debugging — and over reading
+## 4. `trace` over print debugging — and over reading
 
 **Reflex to override:** two reflexes, actually.
 1. (When debugging) add `(format t "~A~%" x)` calls to see what's happening, forget to remove them, add more.
@@ -91,7 +161,7 @@ Trace output goes to `*trace-output*`. If your eval mechanism doesn't capture it
 
 In Clojure: `clojure.tools.trace/trace-vars`. In Scheme: implementation-specific (`,trace` in Chez/Racket).
 
-## 4. Redefine on the fly — the warm image is the point
+## 5. Redefine on the fly — the warm image is the point
 
 **Reflex to override:** treat a code change as requiring a restart. Edit, kill, re-run, wait for setup, retry.
 
@@ -123,7 +193,7 @@ Two concrete moves that make this work:
 - **Bind expensive setup to a global**: `(defparameter *sample* (parse-big-thing "..."))`. Now you can poke at `*sample*` for an hour without re-parsing.
 - **Use `defparameter`, not `defvar`, while developing**: `defvar` won't overwrite an existing binding, so re-evaling it does nothing — surprising and frustrating during iteration. Switch to `defvar` only when the value should genuinely persist across reloads.
 
-## 5. Targeted tests over manual REPL poking, once requirements are defined
+## 6. Targeted tests over manual REPL poking, once requirements are defined
 
 **Reflex to override:** once a function "looks right" at the REPL, move on. Or: re-run the whole test suite after every `(load ...)` and skim the output.
 
@@ -147,7 +217,7 @@ The loop, per change:
 (asdf:test-system :elp)
 ```
 
-**When this doesn't apply:** shape-uncertain exploration (§4's define-at-REPL carve-out). If you don't yet know what the function's signature or return shape should be, writing a test first locks in a guess. Poke at the REPL, settle the shape, *then* switch into the targeted-test loop. The trigger to switch is "I could state the requirement as an assertion" — once that's true, stop manual-testing and write the assertion.
+**When this doesn't apply:** shape-uncertain exploration (§5's define-at-REPL carve-out). If you don't yet know what the function's signature or return shape should be, writing a test first locks in a guess. Poke at the REPL, settle the shape, *then* switch into the targeted-test loop. The trigger to switch is "I could state the requirement as an assertion" — once that's true, stop manual-testing and write the assertion.
 
 ## Cross-cutting: when to fall back to file-based workflow
 
