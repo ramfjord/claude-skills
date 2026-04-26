@@ -243,7 +243,7 @@ One subsystem (the skills repo).
      with a real branch deferred until the next plan executed via
      `start-task` + `do-plan`.
 
-5. **Extend `test-isolation.sh` with merge-worktree teardown check** (~30 LoC)
+5. ✅ **Extend `test-isolation.sh` with merge-worktree teardown check** (~30 LoC)
    - At the end of `ramfjord-swank-image/test-isolation.sh` (after
      the existing 4-image isolation assertions), invoke the scripted
      teardown sequence used by `merge-worktree` against one of the
@@ -257,6 +257,15 @@ One subsystem (the skills repo).
      worktrees; just make sure the trap is idempotent against the
      one we tore down explicitly.
    - *Verify:* `./ramfjord-swank-image/test-isolation.sh` exits 0.
+   **Decisions:**
+   - Reuse WT1 from the existing 4-worktree setup as the teardown
+     victim, rather than spinning up a 5th worktree. WT2 stays alive
+     so the cleanup trap still has work to do, validating the trap's
+     idempotency in passing.
+   - Test branch deletion falls back to `-D` (force) since the test
+     doesn't actually merge — only simulates the post-merge teardown.
+     The real `merge-worktree` skill uses `-d` (refuse-if-unmerged)
+     as the safety check; documented in a comment in the test.
 
 **Sequencing:** C1 first (do-plan's new behavior is the linchpin —
 once it's documented, everything else can reference it). C2 and C3

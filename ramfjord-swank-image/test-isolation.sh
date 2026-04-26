@@ -112,3 +112,26 @@ for i in 0 1 2 3; do
   printf "  [%d] %s\n      session=%s port=%s pid=%s\n" \
     "$i" "${DIRS[$i]}" "${sessions[$i]}" "${ports[$i]}" "${pids[$i]}"
 done
+
+# --- merge-worktree teardown hand-off ---
+# Exercise the mechanical sequence ramfjord-merge-worktree runs after
+# a successful merge (the Claude-driven skill itself is not testable
+# here, but the scripted bits are): cleanup-swank → worktree remove →
+# branch delete. WT1 is the victim; WT2 stays around so the cleanup
+# trap still has work to do.
+echo
+echo "Exercising merge-worktree teardown on $WT1 ..."
+
+WT1_SESSION="${sessions[1]}"
+"$SCRIPT_DIR/cleanup-swank.sh" "$WT1" >/dev/null
+git -C "$FIXTURE" worktree remove "$WT1"
+git -C "$FIXTURE" branch -d "$BRANCH1" 2>/dev/null \
+  || git -C "$FIXTURE" branch -D "$BRANCH1"   # -d may refuse on unmerged test branch
+
+tmux has-session -t "$WT1_SESSION" 2>/dev/null \
+  && fail "tmux session $WT1_SESSION survived teardown"
+[[ ! -d "$WT1" ]] || fail "worktree dir $WT1 survived teardown"
+git -C "$FIXTURE" branch --list "$BRANCH1" | grep -q . \
+  && fail "branch $BRANCH1 survived teardown"
+
+echo "PASS: merge-worktree teardown removed session, worktree, branch"
