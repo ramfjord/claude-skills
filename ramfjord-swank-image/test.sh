@@ -2,7 +2,8 @@
 # test.sh — exercise bootstrap-swank.sh against fixtures/elp.
 #
 # Asserts:
-#   - tmux session 'elp' exists after bootstrap
+#   - .swank-session is written and names a live tmux session
+#   - the session name has the form <basename>-<hash>
 #   - .swank-port and .mcp.json are written
 #   - the recorded port is LISTEN
 #   - a TCP connection to that port succeeds
@@ -20,11 +21,13 @@ if [[ ! -d "$FIXTURE" ]]; then
   exit 1
 fi
 
-SESSION="$(basename "$FIXTURE")"
-
 cleanup() {
-  tmux kill-session -t "$SESSION" 2>/dev/null || true
-  rm -f "$FIXTURE/.swank-port" "$FIXTURE/.mcp.json"
+  if [[ -f "$FIXTURE/.swank-session" ]]; then
+    local session
+    session="$(cat "$FIXTURE/.swank-session")"
+    tmux kill-session -t "$session" 2>/dev/null || true
+  fi
+  rm -f "$FIXTURE/.swank-port" "$FIXTURE/.swank-session" "$FIXTURE/.mcp.json"
 }
 trap cleanup EXIT
 cleanup  # drop any leftover state from a prior run
@@ -33,7 +36,11 @@ cleanup  # drop any leftover state from a prior run
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+[[ -f "$FIXTURE/.swank-session" ]] || fail ".swank-session not written"
+SESSION="$(cat "$FIXTURE/.swank-session")"
 tmux has-session -t "$SESSION" 2>/dev/null || fail "no tmux session '$SESSION'"
+[[ "$SESSION" == "$(basename "$FIXTURE")-"* ]] \
+  || fail "session name '$SESSION' missing basename-hash format"
 [[ -f "$FIXTURE/.swank-port" ]] || fail ".swank-port not written"
 [[ -f "$FIXTURE/.mcp.json"  ]] || fail ".mcp.json not written"
 

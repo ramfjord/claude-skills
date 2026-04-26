@@ -17,8 +17,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 worktree="${1:-$PWD}"
-worktree="$(cd "$worktree" && pwd)"
-session="$(basename "$worktree")"
+worktree="$(realpath "$worktree")"
+session_hash="$(printf '%s' "$worktree" | sha256sum | head -c 8)"
+session="$(basename "$worktree")-${session_hash}"
 
 # Main system: the .asd at the worktree root. That's the system the
 # bootstrap will load and the session will be named after.
@@ -89,6 +90,7 @@ if ! ss -tln | awk '{print $4}' | grep -q ":${port}\$"; then
 fi
 
 echo "$port" > "$worktree/.swank-port"
+echo "$session" > "$worktree/.swank-session"
 cat > "$worktree/.mcp.json" <<EOF
 {
   "mcpServers": {

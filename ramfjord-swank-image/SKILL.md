@@ -11,7 +11,8 @@ This skill is the *setup* side of the workflow. For *using* the eval mechanism o
 
 ## Conventions
 
-- **One tmux session per directory**, named after the directory's basename. Example: worktree at `~/projects/elp-streams` → tmux session `elp-streams`. Main checkout at `~/projects/elp` → tmux session `elp`.
+- **One tmux session per directory**, named `<basename>-<8-char hash of realpath>` so two directories with the same basename (e.g. two clones of `elp/`) can't collide. Example: worktree at `~/projects/elp-streams` → tmux session `elp-streams-a1b2c3d4`.
+- **Session name stored in `.swank-session`** at the directory root. Always read this file rather than re-deriving from `pwd`, so the naming scheme can change later without orphaning live sessions. Gitignored.
 - **Port stored in `.swank-port`** at the directory root. Plain text, just the integer. Gitignored.
 - **`.mcp.json`** at the directory root, project-scoped, with `SWANK_PORT` set to match. Gitignored.
 - **lisp-mcp lives at `~/projects/lisp-mcp`** with the entry script `lisp-mcp.sh`.
@@ -23,8 +24,14 @@ When opening a directory, first establish what exists:
 
 ```bash
 # Is there a session for this directory?
-SESSION_NAME=$(basename "$PWD")
-tmux has-session -t "$SESSION_NAME" 2>/dev/null && echo "session: yes" || echo "session: no"
+if [ -f .swank-session ]; then
+  SESSION_NAME=$(cat .swank-session)
+  tmux has-session -t "$SESSION_NAME" 2>/dev/null \
+    && echo "session: $SESSION_NAME" \
+    || echo "session: no (stale .swank-session)"
+else
+  echo "session: no"
+fi
 
 # Is there a recorded port?
 [ -f .swank-port ] && echo "port: $(cat .swank-port)" || echo "port: none"
@@ -61,7 +68,7 @@ The script:
 - creates a tmux session named after the directory
 - runs `run-swank.expect` inside it (drives SBCL through the load
   sequence, blocking on the prompt rather than sleeping)
-- writes `.swank-port` and `.mcp.json` once swank is actually LISTEN
+- writes `.swank-port`, `.swank-session`, and `.mcp.json` once swank is actually LISTEN
 - refuses if a tmux session of the same name already exists
 
 The bootstrap forms are: push every directory containing a `*.asd`
@@ -105,7 +112,7 @@ and TCP connectivity. Run it after editing `bootstrap-swank.sh` or
 The image is alive but swank died (rare — usually means a thread error in user code took the listener down):
 
 ```bash
-SESSION_NAME=$(basename "$PWD")
+SESSION_NAME=$(cat .swank-session)
 PORT=$(cat .swank-port)
 tmux send-keys -t "$SESSION_NAME" \
   "(swank:create-server :port $PORT :dont-close t)" Enter
@@ -130,9 +137,9 @@ Same image as Claude's `eval_swank`. State changes from either side are visible 
 When a directory is being deleted (worktree removal, etc.):
 
 ```bash
-SESSION_NAME=$(basename "$PWD")
+SESSION_NAME=$(cat .swank-session)
 tmux kill-session -t "$SESSION_NAME" 2>/dev/null
-# .swank-port and .mcp.json go away with the directory
+# .swank-port, .swank-session, and .mcp.json go away with the directory
 ```
 
 Always confirm with the user before killing a session — they may have unsaved REPL state (rebuilding which costs them).
@@ -142,7 +149,7 @@ Always confirm with the user before killing a session — they may have unsaved 
 - **Don't share images across directories.** The whole point of per-directory images is isolation: each worktree gets its own so parallel tasks can't surprise each other, and the main checkout's planning image doesn't bleed into task images. If two directories both want port 4005, allocate the second one to 4006.
 - **Don't try to persist images across reboots.** When the host reboots, all images go away cleanly. Restart sessions on demand. (`sb-ext:save-lisp-and-die` exists but using it routinely defeats the "code in files, image is workspace" mental model.)
 - **Don't put project-specific eval logic in this skill.** This skill sets up the *mechanism*. What to do once the mechanism exists belongs in `coding-lisp` or project-specific guidance.
-- **Don't commit `.mcp.json` or `.swank-port`.** Both are per-machine, per-worktree state. Add to `.gitignore` if they aren't already.
+- **Don't commit `.mcp.json`, `.swank-port`, or `.swank-session`.** All three are per-machine, per-worktree state. Add to `.gitignore` if they aren't already.
 
 ## Verification
 
