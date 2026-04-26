@@ -231,6 +231,43 @@ You do **not** need a cold run per commit. During iteration: edit, `(load ...)`,
 
 If you find yourself reaching for a cold run during normal iteration, that's a smell — the live-image workflow should be faster *and* give you more information.
 
+## Cross-cutting: prefer named iteration when one fits
+
+`loop` is the swiss-army knife of CL iteration, and reflexes carried
+over from non-Lisp languages tend to reach for it for everything. But
+many `loop` forms have a one-word equivalent that's shorter to write
+and easier to read: the *intent* is in the name (`mapcar` =
+"transform each", `every` = "do they all satisfy") instead of buried
+in `for ... collect ...` syntax.
+
+When you write `loop`, ask whether one of these fits:
+
+| Pattern                                        | Use instead    |
+|------------------------------------------------|----------------|
+| `(loop for x in xs collect (f x))`             | `(mapcar #'f xs)` |
+| `(loop for x in xs append (f x))`              | `(mapcan #'f xs)` |
+| `(loop for x in xs when (p x) collect x)`      | `(remove-if-not #'p xs)` |
+| `(loop for x in xs unless (p x) collect x)`    | `(remove-if #'p xs)` |
+| `(loop for x in xs always (p x))`              | `(every #'p xs)` |
+| `(loop for x in xs never (p x))`               | `(notany #'p xs)` |
+| `(loop for x in xs sum (f x))`                 | `(reduce #'+ xs :key #'f)` |
+| `(loop for x in xs do (side-effect x))`        | `(mapc #'... xs)` or `dolist` |
+
+`loop` *is* the right tool when:
+
+- Iterating hash-tables (`loop for k being the hash-keys ...`) —
+  `maphash` accumulates via side-effect, which is uglier.
+- Walking a plist with `by #'cddr` — pair-stride needs the explicit
+  step, no built-in higher-order alternative.
+- Multiple parallel collections accumulating different shapes
+  (`collect ... and collect ...`).
+- Stateful iteration with explicit mutation (argument parsing,
+  early termination on a sentinel, etc.).
+
+**Self-cue:** when you find yourself writing `(loop for x in xs ...)`
+with a single body, pause and ask whether `mapcar` / `remove-if` /
+`every` says it more clearly. The answer is usually yes.
+
 ## Code review is REPL work too
 
 Reviewing Lisp without running it leaves the best tool on the table. Even in "read-only" review, the live image accelerates understanding:

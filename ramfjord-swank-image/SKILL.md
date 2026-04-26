@@ -64,12 +64,28 @@ The script:
 - writes `.swank-port` and `.mcp.json` once swank is actually LISTEN
 - refuses if a tmux session of the same name already exists
 
-The bootstrap forms are: push the directory onto `asdf:*central-registry*`,
-`(ql:quickload :swank)`, `(asdf:load-system :SYSTEM)`, `(swank:create-server
-:port PORT :dont-close t)`. They are sent as **separate forms, not one
-`progn`** — the reader processes a whole form before any evaluation, so
-a `progn` containing `swank:create-server` fails because the SWANK
+The bootstrap forms are: push every directory containing a `*.asd`
+file (the worktree itself + any vendored deps in subdirs) onto
+`asdf:*central-registry*`, then `(ql:quickload :swank)`,
+`(asdf:load-system :SYSTEM)`, `(swank:create-server :port PORT
+:dont-close t)`. They are sent as **separate forms, not one `progn`**
+— the reader processes a whole form before any evaluation, so a
+`progn` containing `swank:create-server` fails because the SWANK
 package doesn't exist at read time.
+
+**Vendored ASDF deps are picked up automatically.** Any `*.asd` found
+under the worktree (excluding hidden dirs like `.git`/`.cache`) gets
+its parent directory pushed onto the central-registry, in addition to
+the worktree root. So a project layout like
+
+```
+my-project/
+  my-project.asd          ; depends-on ("elp" ...)
+  elp/elp.asd             ; vendored
+```
+
+just works — `(asdf:load-system :my-project)` resolves `:elp` from
+`elp/`. No per-project configuration needed.
 
 After bootstrap, **the MCP tools are not yet available in the current Claude session** — MCP servers bind at Claude session start. Tell the user:
 

@@ -16,14 +16,19 @@
 # so we send the next form the moment the previous one completes —
 # event-driven, no sleeps, no polling.
 
-if {[llength $argv] != 3} {
-    puts stderr "usage: run-swank.expect WORKTREE_PATH SYSTEM PORT"
+if {[llength $argv] < 3} {
+    puts stderr "usage: run-swank.expect WORKTREE_PATH SYSTEM PORT \[ASD_DIR ...\]"
     exit 2
 }
 
-set path   [lindex $argv 0]
-set system [lindex $argv 1]
-set port   [lindex $argv 2]
+set path        [lindex $argv 0]
+set system      [lindex $argv 1]
+set port        [lindex $argv 2]
+# Extra ASD-containing dirs to push onto asdf:*central-registry*. The
+# bootstrap discovers these (any *.asd in the worktree) and passes
+# them so vendored deps resolve. Includes the worktree itself when
+# the worktree has its own .asd, so we don't push WORKTREE separately.
+set asd_dirs    [lrange $argv 3 end]
 
 # SBCL's top-level prompt: "* " on its own line.
 set prompt "\n* "
@@ -46,8 +51,16 @@ spawn sbcl --noinform
 send -- "\r"
 await_prompt "sbcl banner"
 
-send -- "(push (truename \"$path/\") asdf:*central-registry*)\r"
-await_prompt "push central-registry"
+if {[llength $asd_dirs] > 0} {
+    foreach d $asd_dirs {
+        send -- "(push (truename \"$d/\") asdf:*central-registry*)\r"
+        await_prompt "push central-registry $d"
+    }
+} else {
+    # No asd dirs reported (older callers); fall back to just the worktree.
+    send -- "(push (truename \"$path/\") asdf:*central-registry*)\r"
+    await_prompt "push central-registry"
+}
 
 # Cold Quicklisp + multi-file ASDF loads can take a while.
 set timeout 180

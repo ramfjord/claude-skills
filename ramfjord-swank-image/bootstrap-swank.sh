@@ -20,12 +20,28 @@ worktree="${1:-$PWD}"
 worktree="$(cd "$worktree" && pwd)"
 session="$(basename "$worktree")"
 
-asd="$(find "$worktree" -maxdepth 1 -name '*.asd' | head -n 1)"
-if [[ -z "$asd" ]]; then
-  echo "no .asd file in $worktree; cannot derive system name" >&2
+# Main system: the .asd at the worktree root. That's the system the
+# bootstrap will load and the session will be named after.
+main_asd="$(find "$worktree" -maxdepth 1 -name '*.asd' | head -n 1)"
+if [[ -z "$main_asd" ]]; then
+  echo "no .asd file at root of $worktree; cannot derive system name" >&2
   exit 1
 fi
-system="$(basename "$asd" .asd)"
+system="$(basename "$main_asd" .asd)"
+
+# Vendored deps: every other *.asd in the worktree (e.g. an elp/ subdir
+# with its own elp.asd). Each parent dir gets pushed onto
+# asdf:*central-registry* so the main system's :depends-on can resolve
+# them. Hidden dirs (.git, .cache, etc.) are skipped.
+asd_dirs=()
+declare -A seen_dirs
+while IFS= read -r asd; do
+  d="$(dirname "$asd")"
+  if [[ -z "${seen_dirs[$d]:-}" ]]; then
+    seen_dirs[$d]=1
+    asd_dirs+=("$d")
+  fi
+done < <(find "$worktree" -name '*.asd' -not -path '*/.*/*' 2>/dev/null)
 
 if tmux has-session -t "$session" 2>/dev/null; then
   echo "tmux session '$session' already exists; refusing to bootstrap" >&2
@@ -39,8 +55,16 @@ done
 
 echo "bootstrapping: session=$session system=$system port=$port path=$worktree"
 
+# Pass every asd-containing dir as an extra arg for run-swank.expect to
+# push onto asdf:*central-registry*. Quote each path to survive the
+# shell expansion inside tmux's command-string.
+extra_args=""
+for d in "${asd_dirs[@]}"; do
+  extra_args+=" $(printf "%q" "$d")"
+done
+
 tmux new-session -d -s "$session" -x 220 -y 50 \
-  "$SCRIPT_DIR/run-swank.expect '$worktree' '$system' '$port'"
+  "$SCRIPT_DIR/run-swank.expect '$worktree' '$system' '$port'$extra_args"
 
 # tmux returns immediately; expect is still running inside the pane.
 # Wait for the actual state we care about — the port being LISTEN —
