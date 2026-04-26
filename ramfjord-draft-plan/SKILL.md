@@ -9,7 +9,9 @@ Plans live in `./plans/<slug>.md` at the repo root. They are committed, human-ed
 
 A plan covers **exactly one branch's worth of work** — what will land as a single feature branch, structured as an ordered series of commits. Work that is genuinely "later, separate scope" goes in a `Future plans` section (one-liners), not as additional sections of this plan; draft those as their own plans when ready.
 
-`ramfjord-start-task` later copies the chosen plan into the worktree as `CURRENT_PLAN.md`, where `ramfjord-do-plan` walks the `Commits` list one item at a time.
+`ramfjord-start-task` later carries the chosen plan into a worktree (writing a small `CURRENT_PLAN.md` marker file that points back at `plans/<slug>.md`); `ramfjord-do-plan` walks the `Commits` list one item at a time, editing the plan as it goes.
+
+Plans are *living* documents. `ramfjord-do-plan` appends a `**Decisions:**` block to each commit's entry as decisions get resolved during implementation, and stages those edits alongside the code in the same commit. So when drafting, your job is to verify the proposed approach is feasible and size each commit into something reviewable — but you don't need to nail every implementation detail. Ambiguities that surface during the commit get resolved at execution time and recorded in the plan via `do-plan`'s decisions appends. Over-specifying upfront just creates churn when execution refines it.
 
 ## What this skill does
 

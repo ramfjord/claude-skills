@@ -211,7 +211,7 @@ One subsystem (the skills repo).
      check the stub is written, the launch command points at the
      right path, and `plans/<slug>.md` is unchanged on disk.
 
-3. **Update `ramfjord-draft-plan` to note plan evolution** (~10 LoC)
+3. ✅ **Update `ramfjord-draft-plan` to note plan evolution** (~10 LoC)
    - `SKILL.md`: short note (1 paragraph) that plans grow during
      execution via `do-plan`'s `**Decisions:**` appends, so initial
      drafts should verify approach feasibility but not over-specify
