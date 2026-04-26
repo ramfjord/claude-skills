@@ -219,7 +219,7 @@ One subsystem (the skills repo).
    - *Verify:* read-through; new note doesn't conflict with existing
      guidance about commit-sizing.
 
-4. **Add `ramfjord-merge-worktree` skill** (~200 LoC)
+4. ✅ **Add `ramfjord-merge-worktree` skill** (~200 LoC)
    - New `ramfjord-merge-worktree/SKILL.md` covering: inputs (worktree
      inference + confirmation), preflight (cwd, branch clean, single
      `## Commits` section, all `✅`, plan-coverage check), merge
@@ -231,6 +231,17 @@ One subsystem (the skills repo).
    - *Verify:* manual smoke run of `check-plan-coverage.sh` against
      a real branch in this repo (the branch this plan is implemented
      on, by the time this commit lands).
+   **Decisions:**
+   - Plan-coverage failure resolution: refuse to merge, recommend
+     amending the offending commit (either to include the real plan
+     update or with a trivial plan touch acknowledging no decisions).
+     No `--allow-skip-coverage` flag — keeps the contract sharp.
+   - Plan smoke-tested against `main..main` (empty range, since this
+     plan is being implemented directly on main rather than via a
+     worktree). Script behaves correctly on the empty-range case
+     ("no commits between … nothing to check"). End-to-end exercise
+     with a real branch deferred until the next plan executed via
+     `start-task` + `do-plan`.
 
 5. **Extend `test-isolation.sh` with merge-worktree teardown check** (~30 LoC)
    - At the end of `ramfjord-swank-image/test-isolation.sh` (after
