@@ -13,7 +13,7 @@ This skill assumes a way to evaluate forms in a live Lisp image is available. Th
 
 If no eval mechanism is available, surface that to the user before continuing — the rest of this skill assumes one exists.
 
-The habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply. The first is about **what to design** — code-as-data is the Lisp differentiator and the move you'll most often miss if you carry over reflexes from non-Lisp languages. It belongs at plan-time as much as edit-time: a misframing here ("let me build a tokenizer that emits tuples and assembles a source string") will commit you to weeks of awkward code that the right framing would have collapsed. The remaining five are about **how to work** in a live image. Same root cause for both: code is data, the image is live, so the cheap moves are different.
+The habits below are ordered by how strongly they counter wrong reflexes. Every one of them counters a default I'd otherwise apply. The first two are about **what to design** — code-as-data and declaration-form shape are both Lisp differentiators, and both are moves you'll most often miss if you carry over reflexes from non-Lisp languages. They belong at plan-time as much as edit-time: a misframing at this layer will commit you to weeks of awkward code that the right framing would have collapsed. The remaining five are about **how to work** in a live image. Same root cause throughout: code is data, the image is live, so the cheap moves are different.
 
 ## 1. Reach for code-as-data — at plan time, not just edit time
 
@@ -85,7 +85,69 @@ Both directions are the same insight: `read`, `eval`, `print`, `defmacro`, backq
 
 Code-as-data is the *cheap option in Lisp*, not the *first option for everything*. If the answer is a plain function and a plain call, write that. The trigger is "the problem has code-shaped input or output, or a duplication that crosses runtime/codegen layers" — not "I'm in Lisp so let me use macros." Macros and `eval` are everyday tools but still cost readability; reach for them when the alternative is fighting the language.
 
-## 2. Inspect, don't guess
+## 2. Make declaration forms describe what they declare, not how they're built
+
+**Reflex to override:** ship the data structure as the surface form. When a feature needs N entries of "key plus computed value," reach for an alist or list of conses literally — and put the lambdas, the cons-pairs, the quasi-unquote splicing right there in the user-facing form. The reader sees the construction mechanism every time they read an entry.
+
+**Do instead:** when the surface form is a *declaration* (a thing readers are supposed to recognize as "this is one of those"), wrap it in a macro that absorbs the construction mechanism. The macro is small. The payoff is that every visible token in the call site does work toward the meaning of the declaration, instead of toward how it's stored.
+
+Concrete before/after — a six-line macro buys per-entry clarity across every declaration:
+
+```lisp
+;; Before — surface form describes how the entry is stored.
+(defparameter *derived-fields*
+  `((:compose-file
+     . ,(lambda (s g)
+          (format nil "~A/~A" (getf g :install-base) (getf s :name))))
+    (:source-dir
+     . ,(lambda (s g)
+          (declare (ignore g))
+          (format nil "services/~A" (getf s :name))))
+    (:unit
+     . ,(lambda (s g)
+          (declare (ignore g))
+          (getf s :unit)))
+    ...))
+
+;; After — surface form describes what the field is.
+(define-service-field :compose-file
+  (format nil "~A/~A" (getf globals :install-base) (svc-field :name)))
+(define-service-field :source-dir
+  (format nil "services/~A" (svc-field :name)))
+(define-service-field :unit)   ; bare form is the limit of the general form
+```
+
+The "before" surface form contains: alist construction (`'((... . ...) ...)`), quasi-unquote splices (`,(lambda ...)`), the lambda keyword and gensym arg names (`s`, `g`), `(declare (ignore g))` markers in bodies that don't need globals, and `(getf s ...)` references that mention `s` only because the closure needs it. None of those say anything about *the field*. The reader has to subtract them to find the content. The "after" form has no token that doesn't say something about the specific field being declared.
+
+### The principle
+
+**Every visible mechanism in a surface form should carry meaning relevant to that form's purpose.** All code is mechanism — that's not the issue. The issue is *whose mechanism is on display*: the implementation's (how the value is stored, what arguments the closure happens to take, how entries are glued into a structure), or the form's (what this declaration is, what it computes). The macro's job is to absorb the implementation's mechanism in one place so call sites are content-only.
+
+### Symptoms that point to this move
+
+- **Positional gensym variable names in call-site bodies** (`s`, `g`, `x`, `acc`). They name nothing; they exist because the implementation chose to expose those parameters. The macro can give them real names once, in one place — or replace them with helpers (`svc-field`, `global`) that close over them.
+
+- **`(declare (ignore X))` in bodies that don't need X.** Loud irrelevance. Each occurrence makes the reader pay attention to the absence of a thing. Replace with `ignorable` once inside the macro; bodies that don't use the parameter become silent. Silent absence is free; declared absence is taxed.
+
+- **Repeated tokens that don't differentiate adjacent entries.** If every entry has the same `,(lambda (s g) ...)` shell with the same `(declare (ignore g))` and the same `(getf s ...)` references — and the only token that varies is the keyword — then everything *except* that keyword is scaffolding. Move it into the macro.
+
+- **A "trivial" case that looks syntactically different from the "interesting" case.** If a no-op passthrough requires `(:foo . ,(lambda (s g) (declare (ignore g)) (getf s :foo)))` while a computed entry is similar with a different body, the trivial form should be the *limit* of the general form, not a separate ritual. `(define-service-field :foo)` and `(define-service-field :foo (some-form))` share a shape; the bare form is the interesting form in miniature.
+
+- **Direct alist/plist construction at the top level when the entries are conceptually separate declarations.** Each entry is a thing the reader thinks about as a unit; the implementation's choice to glue them together as one literal is incidental. A series of `(define-X ...)` forms reads as a series of declarations; a single quoted list reads as one big literal that happens to contain N things.
+
+### What this is not
+
+This is **not** "wrap everything in a macro." Macros cost readability — they introduce a layer between source and behavior that has to be macroexpanded to understand. The trigger is specifically: **a recurring shape where the same scaffolding appears around varying content, and the scaffolding has no meaning at the call site**. If your data structure is genuinely just a list of pairs and the bodies are uniform `getf`s, an alist is fine. The smell is when bodies are non-trivial *and* every body shares the same wrapping ritual *and* a reader has to subtract that ritual to find what each entry means.
+
+This is also not about line count. The macro can be five lines; the entries might save two lines each. The win is per-entry readability, not total-LoC.
+
+### Self-cue
+
+When designing a form that someone will read as "one of these declarations," ask: **does every visible token in the form say something specific about this particular declaration?** If tokens recur across entries (lambda wrappers, ignore declarations, gensym arg references, alist construction syntax) and only the keyword varies, those recurring tokens belong inside a macro, not in the surface form.
+
+The taste cue when reading: if you find yourself mentally editing out scaffolding to see what each entry *means*, that's the smell. If you read a form and feel like every token is doing work, that's the inverse signal — the form fits its meaning.
+
+## 3. Inspect, don't guess
 
 **Reflex to override:** read source files to predict what a function returns or what shape a value has.
 
@@ -114,7 +176,7 @@ The "inspect, don't guess" reflex is easy to apply when staring at a return valu
 
 Symptom that you skipped these: writing code, watching the test fail, then *only now* opening a REPL to figure out what the API actually does. If you're going to inspect to debug, inspect to design — it's the same effort earlier in the loop.
 
-## 3. Errors carry information — read them, don't escape them
+## 4. Errors carry information — read them, don't escape them
 
 **Reflex to override:** treat an error as a wall and immediately go back to reading source.
 
@@ -124,7 +186,7 @@ Symptom that you skipped these: writing code, watching the test fail, then *only
 
 If you genuinely need an interactive restart or frame inspection (rare — usually you can reproduce by calling the offending function with crafted args and reading the returned condition), say so explicitly and ask the user to attach. Otherwise: read the condition, fix the code, reload, retry.
 
-## 4. `trace` over print debugging — and over reading
+## 5. `trace` over print debugging — and over reading
 
 **Reflex to override:** two reflexes, actually.
 1. (When debugging) add `(format t "~A~%" x)` calls to see what's happening, forget to remove them, add more.
@@ -161,7 +223,7 @@ Trace output goes to `*trace-output*`. If your eval mechanism doesn't capture it
 
 In Clojure: `clojure.tools.trace/trace-vars`. In Scheme: implementation-specific (`,trace` in Chez/Racket).
 
-## 5. Redefine on the fly — the warm image is the point
+## 6. Redefine on the fly — the warm image is the point
 
 **Reflex to override:** treat a code change as requiring a restart. Edit, kill, re-run, wait for setup, retry.
 
@@ -193,7 +255,7 @@ Two concrete moves that make this work:
 - **Bind expensive setup to a global**: `(defparameter *sample* (parse-big-thing "..."))`. Now you can poke at `*sample*` for an hour without re-parsing.
 - **Use `defparameter`, not `defvar`, while developing**: `defvar` won't overwrite an existing binding, so re-evaling it does nothing — surprising and frustrating during iteration. Switch to `defvar` only when the value should genuinely persist across reloads.
 
-## 6. Targeted tests over manual REPL poking, once requirements are defined
+## 7. Targeted tests over manual REPL poking, once requirements are defined
 
 **Reflex to override:** once a function "looks right" at the REPL, move on. Or: re-run the whole test suite after every `(load ...)` and skim the output.
 
@@ -217,7 +279,7 @@ The loop, per change:
 (asdf:test-system :elp)
 ```
 
-**When this doesn't apply:** shape-uncertain exploration (§5's define-at-REPL carve-out). If you don't yet know what the function's signature or return shape should be, writing a test first locks in a guess. Poke at the REPL, settle the shape, *then* switch into the targeted-test loop. The trigger to switch is "I could state the requirement as an assertion" — once that's true, stop manual-testing and write the assertion.
+**When this doesn't apply:** shape-uncertain exploration (§6's define-at-REPL carve-out). If you don't yet know what the function's signature or return shape should be, writing a test first locks in a guess. Poke at the REPL, settle the shape, *then* switch into the targeted-test loop. The trigger to switch is "I could state the requirement as an assertion" — once that's true, stop manual-testing and write the assertion.
 
 ## Cross-cutting: when to fall back to file-based workflow
 
