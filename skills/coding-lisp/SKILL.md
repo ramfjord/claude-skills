@@ -240,7 +240,24 @@ In Clojure: `clojure.tools.trace/trace-vars`. In Scheme: implementation-specific
 (asdf:load-system :elp :force t)
 ```
 
-This is *why* REPL-driven dev is fast: you pay setup cost once and iterate on top of it. If you find yourself restarting the image more than once a session, ask why — usually it's because something got into a wedged state, and the right fix is to make that state inspectable/resettable from a function call rather than to restart.
+This is *why* REPL-driven dev is fast: you pay setup cost once and iterate on top of it.
+
+### Per-form helpers: `claude-tools:eval-form-at` and `claude-tools:reload-form`
+
+The `ramfjord:swank-image` bootstrap preloads two helpers in every image, in the `claude-tools` package:
+
+- **`(claude-tools:eval-form-at FILE LINE &optional COL)`** — read the form starting at `FILE:LINE:COL` and eval it; returns the value. The C-x C-e / C-M-x analogue: ask "what does *this* form return, given the file's current state" without retyping the form or restructuring it into a one-off blob. `LINE` is 1-based; `COL` defaults to 0 (leading whitespace is fine, the reader skips it).
+- **`(claude-tools:reload-form FILE 'NAME)`** — find the top-level form in `FILE` whose head is `NAME` and re-eval it. The C-c C-c analogue: redefine one defun without `(load ...)`-ing the whole file (which would re-run all top-level side effects — `defparameter`s clobbering bindings you care about, `defpackage`s, setup calls).
+
+When to reach for which:
+
+- **Whole-file reload** (`(load "scratch.lisp")`) — scratch files where everything is meant to re-run, or source files with no side-effecting top-level forms you care about.
+- **`claude-tools:reload-form`** — source files where you want to redefine *one* function without disturbing the rest of the image's state. The common case once you've stopped using `(load ...)` reflexively.
+- **`claude-tools:eval-form-at`** — value-checking. You wrote `(parse-config *sample*)` somewhere in a file (test, scratch, comment block) and want to see what it returns *now*, with the image's current state. No need to type the form into eval_swank or wrap it in a `progn` with setup.
+
+Both read with the live image's reader, so reader macros, `#|...|#`, `#\(`, `#+sbcl`, custom readtables — all handled. If the file lives in a non-`cl-user` package, bind `*package*` around the call: `(let ((*package* (find-package :elp))) (claude-tools:eval-form-at "src/foo.lisp" 42))`.
+
+Cost-of-line-numbers caveat: `claude-tools:eval-form-at`'s line/col arguments go stale fast when you're editing the file. Fine for one-off probes (the form is usually gone by the next iteration). For repeated reloads of the same defun across many edits, prefer `claude-tools:reload-form` — names are stable across edits.
 
 ### Edit-then-load vs. define-at-REPL
 

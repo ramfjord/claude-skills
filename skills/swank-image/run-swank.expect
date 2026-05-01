@@ -74,6 +74,14 @@ set timeout 10
 send -- "(swank:create-server :port $port :dont-close t)\r"
 await_prompt "swank:create-server"
 
+# Load the helpers tools.lisp ships (eval-form-at, reload-form). Path
+# comes from the TOOLS_LISP env var the bootstrap sets — kept out of
+# argv so the trailing variadic ASD_DIRS stay clean.
+if {[info exists env(TOOLS_LISP)] && [file exists $env(TOOLS_LISP)]} {
+    send -- "(load \"$env(TOOLS_LISP)\")\r"
+    await_prompt "load tools.lisp"
+}
+
 # Hand the pty to the caller. Blocks until sbcl exits — that's how
 # tmux's pane keeps a live REPL after this script's "bootstrap phase"
 # is done.

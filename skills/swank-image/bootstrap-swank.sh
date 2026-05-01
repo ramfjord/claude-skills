@@ -65,6 +65,7 @@ for d in "${asd_dirs[@]}"; do
 done
 
 tmux new-session -d -s "$session" -x 220 -y 50 \
+  -e "TOOLS_LISP=$SCRIPT_DIR/tools.lisp" \
   "$SCRIPT_DIR/run-swank.expect '$worktree' '$system' '$port'$extra_args"
 
 # tmux returns immediately; expect is still running inside the pane.

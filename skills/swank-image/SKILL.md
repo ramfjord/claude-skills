@@ -94,6 +94,8 @@ my-project/
 just works — `(asdf:load-system :my-project)` resolves `:elp` from
 `elp/`. No per-project configuration needed.
 
+The bootstrap also `(load ...)`s `tools.lisp` from this skill directory after swank starts, so every image has the `claude-tools` package preloaded with helpers Claude uses for value-checking and per-form reload — see `ramfjord:coding-lisp` for usage. The path comes from `TOOLS_LISP` (set by the bootstrap), so the load step is a no-op if the env var is unset or the file is missing.
+
 After bootstrap, **the MCP tools are not yet available in the current Claude session** — MCP servers bind at Claude session start. Tell the user:
 
 > Setup complete on port `$PORT`. Restart Claude in this directory (or run `/mcp`) to pick up `eval_swank`.
