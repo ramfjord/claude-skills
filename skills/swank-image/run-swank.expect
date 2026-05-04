@@ -51,6 +51,19 @@ spawn sbcl --noinform
 send -- "\r"
 await_prompt "sbcl banner"
 
+# qlot: if the worktree has `.qlot/setup.lisp`, load it before anything
+# else. That swaps in qlot's project-local quicklisp and source-registry,
+# so `(asdf:load-system :foo)` resolves dependencies through
+# `.qlot/dists/` instead of the user's `~/quicklisp/`. Without this,
+# qlot-managed deps look "missing" even though they're installed —
+# because they're installed under qlot, not under user-quicklisp.
+if {[file exists "$path/.qlot/setup.lisp"]} {
+    set timeout 60
+    send -- "(load \"$path/.qlot/setup.lisp\")\r"
+    await_prompt "load .qlot/setup.lisp"
+    set timeout 30
+}
+
 if {[llength $asd_dirs] > 0} {
     foreach d $asd_dirs {
         send -- "(push (truename \"$d/\") asdf:*central-registry*)\r"
@@ -70,9 +83,22 @@ await_prompt "ql:quickload :swank"
 send -- "(asdf:load-system :$system)\r"
 await_prompt "asdf:load-system :$system"
 
-set timeout 10
-send -- "(swank:create-server :port $port :dont-close t)\r"
-await_prompt "swank:create-server"
+set timeout 30
+# If VLIME_LISP_DIR + VLIME_PORT are set, hand off server startup to
+# vlime:main, which boots both swank (on $port) and vlime's JSON listener
+# (on $env(VLIME_PORT)) inside the same image. Editor connects to the
+# vlime port; eval_swank/lisp-mcp connects to the swank port. One image,
+# two protocols, shared state. Otherwise: plain swank only.
+if {[info exists env(VLIME_LISP_DIR)] && [info exists env(VLIME_PORT)] \
+        && [file exists "$env(VLIME_LISP_DIR)/load-vlime.lisp"]} {
+    send -- "(load \"$env(VLIME_LISP_DIR)/load-vlime.lisp\")\r"
+    await_prompt "load vlime"
+    send -- "(vlime:main :port $env(VLIME_PORT) :swank-port $port :backend :vlime-usocket)\r"
+    await_prompt "vlime:main"
+} else {
+    send -- "(swank:create-server :port $port :dont-close t)\r"
+    await_prompt "swank:create-server"
+}
 
 # Load the helpers tools.lisp ships (eval-form-at, reload-form). Path
 # comes from the TOOLS_LISP env var the bootstrap sets — kept out of

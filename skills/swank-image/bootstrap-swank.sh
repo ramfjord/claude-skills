@@ -54,7 +54,30 @@ while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":${port}\$"; do
   port=$((port + 1))
 done
 
-echo "bootstrapping: session=$session system=$system port=$port path=$worktree"
+# Vlime support: if VLIME_LISP_DIR points at an installed vlime checkout
+# (the dir containing load-vlime.lisp), allocate a second port for vlime's
+# listener. vlime:main starts both swank and its own JSON server in the
+# same image, so editor + claude can attach to the same image via
+# different ports/protocols. Default to lazy.nvim's path; users without
+# vlime can unset VLIME_LISP_DIR to skip.
+if [[ -z "${VLIME_LISP_DIR-}" ]]; then
+  VLIME_LISP_DIR="$HOME/.local/share/nvim/lazy/vlime/lisp"
+fi
+vlime_port=0
+if [[ -f "$VLIME_LISP_DIR/load-vlime.lisp" ]]; then
+  vlime_port=$((port + 1))
+  while ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":${vlime_port}\$"; do
+    vlime_port=$((vlime_port + 1))
+  done
+else
+  VLIME_LISP_DIR=""
+fi
+
+if (( vlime_port > 0 )); then
+  echo "bootstrapping: session=$session system=$system swank-port=$port vlime-port=$vlime_port path=$worktree"
+else
+  echo "bootstrapping: session=$session system=$system port=$port path=$worktree (vlime disabled)"
+fi
 
 # Pass every asd-containing dir as an extra arg for run-swank.expect to
 # push onto asdf:*central-registry*. Quote each path to survive the
@@ -64,17 +87,26 @@ for d in "${asd_dirs[@]}"; do
   extra_args+=" $(printf "%q" "$d")"
 done
 
+tmux_envs=( -e "TOOLS_LISP=$SCRIPT_DIR/tools.lisp" )
+if (( vlime_port > 0 )); then
+  tmux_envs+=( -e "VLIME_LISP_DIR=$VLIME_LISP_DIR" -e "VLIME_PORT=$vlime_port" )
+fi
+
 tmux new-session -d -s "$session" -x 220 -y 50 \
-  -e "TOOLS_LISP=$SCRIPT_DIR/tools.lisp" \
+  "${tmux_envs[@]}" \
   "$SCRIPT_DIR/run-swank.expect '$worktree' '$system' '$port'$extra_args"
 
 # tmux returns immediately; expect is still running inside the pane.
-# Wait for the actual state we care about — the port being LISTEN —
+# Wait for the actual state we care about — the port(s) being LISTEN —
 # rather than for the expect script to "be done" (it never is; it
-# `interact`s forever to keep sbcl alive).
+# `interact`s forever to keep sbcl alive). When vlime is enabled, the
+# vlime listener comes up *after* swank, so waiting on it implies both.
+wait_port=$port
+(( vlime_port > 0 )) && wait_port=$vlime_port
+
 deadline=$((SECONDS + 240))
 while (( SECONDS < deadline )); do
-  if ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":${port}\$"; then
+  if ss -tln 2>/dev/null | awk '{print $4}' | grep -q ":${wait_port}\$"; then
     break
   fi
   if ! tmux has-session -t "$session" 2>/dev/null; then
@@ -84,14 +116,17 @@ while (( SECONDS < deadline )); do
   sleep 0.2
 done
 
-if ! ss -tln | awk '{print $4}' | grep -q ":${port}\$"; then
-  echo "ERROR: swank not listening on $port after 240s" >&2
+if ! ss -tln | awk '{print $4}' | grep -q ":${wait_port}\$"; then
+  echo "ERROR: server not listening on $wait_port after 240s" >&2
   echo "  attach: tmux attach -t $session" >&2
   exit 2
 fi
 
 echo "$port" > "$worktree/.swank-port"
 echo "$session" > "$worktree/.swank-session"
+if (( vlime_port > 0 )); then
+  echo "$vlime_port" > "$worktree/.vlime-port"
+fi
 cat > "$worktree/.mcp.json" <<EOF
 {
   "mcpServers": {
@@ -107,5 +142,9 @@ cat > "$worktree/.mcp.json" <<EOF
 }
 EOF
 
-echo "done. port=$port session=$session"
+if (( vlime_port > 0 )); then
+  echo "done. swank-port=$port vlime-port=$vlime_port session=$session"
+else
+  echo "done. port=$port session=$session"
+fi
 echo "restart Claude in $worktree (or /mcp) to pick up eval_swank"

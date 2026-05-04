@@ -39,6 +39,11 @@ if [[ -f "$dir/.swank-port" ]]; then
   torn_down+=(".swank-port")
 fi
 
+if [[ -f "$dir/.vlime-port" ]]; then
+  rm -f "$dir/.vlime-port"
+  torn_down+=(".vlime-port")
+fi
+
 if [[ -f "$dir/.mcp.json" ]]; then
   rm -f "$dir/.mcp.json"
   torn_down+=(".mcp.json")

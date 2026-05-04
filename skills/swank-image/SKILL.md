@@ -14,9 +14,12 @@ This skill is the *setup* side of the workflow. For *using* the eval mechanism o
 - **One tmux session per directory**, named `<basename>-<8-char hash of realpath>` so two directories with the same basename (e.g. two clones of `elp/`) can't collide. Example: worktree at `~/projects/elp-streams` → tmux session `elp-streams-a1b2c3d4`.
 - **Session name stored in `.swank-session`** at the directory root. Always read this file rather than re-deriving from `pwd`, so the naming scheme can change later without orphaning live sessions. Gitignored.
 - **Port stored in `.swank-port`** at the directory root. Plain text, just the integer. Gitignored.
+- **Vlime port stored in `.vlime-port`** at the directory root, when vlime support is enabled (see below). Vlime's JSON protocol can't share a socket with raw swank, so the image runs both listeners — vlime on `.vlime-port` for the editor, swank on `.swank-port` for lisp-mcp/eval_swank. Same SBCL process, shared image state. Gitignored.
 - **`.mcp.json`** at the directory root, project-scoped, with `SWANK_PORT` set to match. Gitignored.
 - **lisp-mcp lives at `~/projects/lisp-mcp`** with the entry script `lisp-mcp.sh`.
-- **Port range**: start at 4005, increment per directory. Skip ports already in use (any LISTEN socket).
+- **Port range**: start at 4005, increment per directory. Skip ports already in use (any LISTEN socket). When vlime is enabled, the bootstrap allocates two consecutive free ports per image (swank then vlime).
+- **Vlime support is opt-in via `VLIME_LISP_DIR`**. The bootstrap defaults it to `~/.local/share/nvim/lazy/vlime/lisp` and silently disables vlime if `load-vlime.lisp` isn't there. Set `VLIME_LISP_DIR=` (empty) before bootstrap to force-disable.
+- **qlot is auto-detected.** If `$worktree/.qlot/setup.lisp` exists, the bootstrap loads it before quickloading anything, so qlot-managed deps resolve through `.qlot/dists/` instead of the user's `~/quicklisp/`. No flag needed — just bootstrap from a directory that already has `qlot install` run.
 
 ## Quick checks before doing anything
 
