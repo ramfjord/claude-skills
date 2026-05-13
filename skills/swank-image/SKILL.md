@@ -148,9 +148,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/swank-image/cleanup-swank.sh "$DIR"
 
 The script reads `.swank-session`, kills the named tmux session if it's
 alive, and removes `.swank-session`, `.swank-port`, and `.mcp.json`. It
-is idempotent — missing pieces are no-ops, never errors. The
-`ramfjord:merge-worktree` skill (when implemented) calls this during
-worktree teardown.
+is idempotent — missing pieces are no-ops, never errors.
 
 Always confirm with the user before killing a session in an actively-used
 directory — they may have unsaved REPL state worth preserving.

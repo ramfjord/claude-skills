@@ -1,6 +1,6 @@
 # Skills workspace
 
-Personal Claude Code skills, packaged as the `ramfjord` plugin. Installed, skills appear as `ramfjord:coding-lisp`, `ramfjord:do-plan`, etc.
+Personal Claude Code skills, packaged as the `ramfjord` plugin. Installed, skills appear as `ramfjord:coding-lisp`, `ramfjord:swank-image`.
 
 ## Layout
 
@@ -12,6 +12,6 @@ Personal Claude Code skills, packaged as the `ramfjord` plugin. Installed, skill
 
 ## Conventions
 
-- **Cross-references between skills** use the installed form (`ramfjord:do-plan`, not `do-plan` or `ramfjord-do-plan`). That matches what the model sees at runtime.
+- **Cross-references between skills** use the installed form (`ramfjord:swank-image`, not `swank-image` or `ramfjord-swank-image`). That matches what the model sees at runtime.
 - **Script paths inside skills** use `${CLAUDE_PLUGIN_ROOT}/skills/<name>/<script>.sh` so they resolve when installed via the marketplace, not just when run from this checkout.
 - **Commits**: short imperative subject ("Add X", "Retire Y", "Update Z for ..."), logical units (one skill change per commit when practical). No Claude co-author trailer — see `git log` for the established style.

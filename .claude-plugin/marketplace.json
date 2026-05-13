@@ -4,7 +4,7 @@
   "plugins": [
     {
       "name": "ramfjord",
-      "description": "Personal Claude Code skills: plan/worktree/swank-image flow + Lisp REPL-driven coding.",
+      "description": "Personal Claude Code skills for Lisp REPL-driven coding against a per-directory SBCL+swank image.",
       "source": "./"
     }
   ]
